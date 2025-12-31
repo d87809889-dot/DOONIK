@@ -5,75 +5,75 @@ import pypdfium2 as pdfium
 import io
 from docx import Document
 
-# 1. SEO VA SAHIFA SOZLAMALARI
+# 1. SEO VA ILMIY MUHIT SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Antique Professional Edition", 
+    page_title="Manuscript AI - Academic Master Edition", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- REKLAMALARNI YASHIRISH VA ANTIK DIZAYN (CSS) ---
-hide_and_style = """
+# --- ILMIY-ANTIK DIZAYN (PROFESSIONAL CSS) ---
+academic_style = """
     <style>
-    /* Streamlit va GitHub elementlarini agressiv yashirish */
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important;}
-    header {visibility: hidden !important;}
-    [data-testid="stHeader"] {display: none !important;}
-    .stAppDeployButton {display:none !important;}
-    #stDecoration {display:none !important;}
+    /* Reklamalarni yashirish */
+    #MainMenu {visibility: hidden !important;} footer {visibility: hidden !important;} header {visibility: hidden !important;}
+    [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
     
-    /* Antik-Ilmiy dizayn ranglari */
+    /* Arxiv foni va shriftlar */
     .main { 
-        background-color: #fdfaf1; /* Pergament foni */
-        color: #1a202c;
+        background-color: #f4ecd8; /* Haqiqiy pergament foni */
+        color: #1a1a1a;
+        font-family: 'Times New Roman', serif;
     }
     
+    /* Akademik sarlavhalar */
     h1, h2, h3 {
-        color: #1e3a8a !important;
+        color: #0c1421 !important;
         font-family: 'Georgia', serif;
-        border-bottom: 2px solid #d4af37;
-        padding-bottom: 10px;
+        border-bottom: 3px double #c5a059;
+        padding-bottom: 15px;
+        text-align: center;
     }
 
-    /* Side-by-Side Editor uchun maxsus dizayn */
+    /* Side-by-Side Editor */
     .stTextArea textarea {
         background-color: #ffffff !important;
-        border: 1px solid #d4af37 !important;
+        border: 2px solid #c5a059 !important;
         font-family: 'Courier New', monospace;
-        font-size: 15px !important;
-        color: #1a202c !important;
+        font-size: 17px !important;
+        color: #000000 !important;
+        border-radius: 4px;
     }
 
-    /* Tugmalar dizayni */
+    /* Tugmalar - Ilmiy uslub */
     .stButton>button {
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
-        color: #fdfaf1;
-        border-radius: 8px;
-        border: 1px solid #d4af37;
+        background-color: #0c1421;
+        color: #c5a059;
+        border: 2px solid #c5a059;
+        border-radius: 0px;
         font-weight: bold;
-        padding: 12px 20px;
-        transition: 0.3s ease;
+        padding: 15px 30px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        transition: 0.4s;
     }
     .stButton>button:hover {
-        background: #d4af37;
-        color: #1e3a8a;
-        transform: translateY(-2px);
+        background-color: #c5a059;
+        color: #0c1421;
+        border: 2px solid #0c1421;
     }
 
-    /* Sidebar - To'q navy fon */
+    /* Sidebar - To'q arxiv foni */
     section[data-testid="stSidebar"] {
-        background-color: #0f172a !important;
+        background-color: #0c1421 !important;
+        border-right: 2px solid #c5a059;
     }
     </style>
 """
-st.markdown(hide_and_style, unsafe_allow_html=True)
+st.markdown(academic_style, unsafe_allow_html=True)
 
-# Google Search Console Verification Meta Tag
-st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
-
-# --- 2. XAVFSIZLIK VA SECRETS ---
+# --- 2. XAVFSIZLIK VA MAXFIY KALITLAR ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -81,115 +81,121 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Streamlit Settings > Secrets bo'limini tekshiring.")
+    st.error("Tizim sozlamalari (Secrets) topilmadi!")
     st.stop()
 
 if not st.session_state["authenticated"]:
     _, col_mid, _ = st.columns([1, 1.5, 1])
     with col_mid:
-        st.markdown("<h2 style='text-align: center;'>🔐 Manuscript AI Enterprise</h2>", unsafe_allow_html=True)
-        pwd_input = st.text_input("Maxfiy parol", type="password", placeholder="Parolni kiriting...")
-        if st.button("Kirish"):
+        st.markdown("<h2 style='border:none;'>🏛 AKADEMIK KIRISH</h2>", unsafe_allow_html=True)
+        pwd_input = st.text_input("Maxfiy kirish kodi", type="password", placeholder="Kodni kiriting...")
+        if st.button("TIZIMGA KIRISH"):
             if pwd_input == CORRECT_PASSWORD:
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
-                st.error("Parol noto'g'ri!")
+                st.error("Ruxsat berilmadi: Kod noto'g'ri!")
     st.stop()
 
-# --- 3. ASOSIY DASTUR ---
-# Barqaror modeldan foydalanamiz: gemini-1.5-flash
+# --- 3. ILMIY ANALIZ TIZIMI ---
 genai.configure(api_key=GEMINI_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Sidebar - Brending va Sozlamalar
 with st.sidebar:
-    st.markdown("<h2 style='color:white;'>📜 Manuscript AI</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:silver;'>v4.5 Professional Edition</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 ARXIV AI</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color:white; text-align:center; font-size:12px;'>Academic Master Edition v5.0</p>", unsafe_allow_html=True)
     st.markdown("---")
-    lang = st.selectbox("Hujjat tili:", ["Chig'atoy", "Arabcha", "Forscha", "Eski Turkiy"])
-    era = st.selectbox("Tarixiy uslub:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+    lang = st.sidebar.selectbox("Hujjatning filologik tili:", ["Chig'atoy (Eski o'zbek)", "Fors (Klassik)", "Arab (Ilmiy)", "Usmonli Turk"])
+    era = st.sidebar.selectbox("Paleografik uslub (Xat):", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Devoniy", "Noma'lum"])
+    
     st.markdown("---")
-    st.markdown("#### 📖 Qo'llanma")
-    st.caption("AI tahlilidan so'ng natijani o'ng tomondagi tahrirlash oynasida tuzatishingiz mumkin. Word faylga siz tuzatgan so'nggi variant saqlanadi.")
-    if st.button("🚪 Tizimdan chiqish"):
+    st.markdown("<h4 style='color:#c5a059;'>🏛 Ilmiy yo'riqnoma:</h4>", unsafe_allow_html=True)
+    st.caption("Ushbu platforma matnshunoslik va paleografiya qoidalariga asoslangan holda tahlil o'tkazadi.")
+    
+    if st.button("🚪 TIZIMDAN CHIQISH"):
         st.session_state["authenticated"] = False
         st.rerun()
 
-# Asosiy ekran
-st.title("📜 Tarixiy Qo'lyozmalar Tahlil Markazi")
-st.markdown(f"**Ekspertiza rejimi:** {lang} | **Yozuv uslubi:** {era}")
+# ASOSIY EKRAN
+st.markdown("<h1>Tarixiy Qo'lyozmalar bo'yicha Raqamli Ekspertiza</h1>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center;'><b>Soha:</b> {lang} filologiyasi | <b>Yozuv turi:</b> {era} paleografiyasi</p>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Faylni tanlang (PDF/Rasm)", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
+uploaded_file = st.file_uploader("Ilmiy manbani yuklang (PDF/Rasm)", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
 if uploaded_file:
     images = []
     if uploaded_file.type == "application/pdf":
-        with st.spinner('PDF sahifalanmoqda...'):
+        with st.spinner('Manba sahifalari raqamlashtirilmoqda...'):
             pdf = pdfium.PdfDocument(uploaded_file)
             for i in range(len(pdf)):
-                images.append(pdf[i].render(scale=2).to_pil())
+                images.append(pdf[i].render(scale=3).to_pil()) # Sifatni 3x oshiramiz
     else:
         images.append(Image.open(uploaded_file))
 
-    st.markdown("### 📄 Sahifalar")
+    st.markdown("### 🏛 Tadqiqot ob'ekti sahifalari")
     cols = st.columns(min(len(images), 4))
     for idx, img in enumerate(images):
-        cols[idx % 4].image(img, caption=f"{idx+1}-sahifa", use_container_width=True)
+        cols[idx % 4].image(img, caption=f"Varaq {idx+1}", use_container_width=True)
 
-    if st.button('✨ Intellektual Tahlilni Boshlash'):
-        st.session_state['results'] = []
+    if st.button('✨ CHUQUR AKADEMIK TAHLILNI BOSHLASH'):
+        st.session_state['academic_results'] = []
+        
+        # --- ENG MUKAMMAL AKADEMIK PROMPT ---
         prompt = f"""
-        Siz {lang} tili va {era} uslubi bo'yicha dunyo darajasidagi mutaxassisiz. 
-        Ushbu tasvirdagi qo'lyozmani professional tahlil qiling:
-        1. Transliteratsiya (lotin alifbosida).
-        2. Ma'noviy tarjima (o'zbek tilida).
-        3. Tarixiy ahamiyati haqida izoh.
+        Siz qadimiy qo'lyozmalar, matnshunoslik va paleografiya bo'yicha dunyo darajasidagi akademiksiz. 
+        Ushbu {lang} tilidagi va {era} uslubidagi manbani quyidagi qat'iy ilmiy mezonlar asosida tahlil qiling:
+
+        1. PALEOGRAFIK TAVSIF: Yozuv uslubi, xatning o'ziga xosligi va matnning joylashuvi haqida codicological ma'lumot bering.
+        2. DIPLOMATIK TRANSLITERATSIYA: Matnni harfma-harf, asl imlosini saqlagan holda lotin alifbosiga ko'chiring.
+        3. SEMANTIK TARJIMA: Matnning ma'nosini zamonaviy o'zbek adabiy tiliga, ilmiy aniqlik bilan o'giring.
+        4. TANQIDIY APPARAT (KOMMENTARIY): Matndagi arxaizmlar, tarixiy shaxslar, joy nomlari va terminlarga matnshunoslik nuqtai nazaridan ilmiy izoh bering.
+        
+        Tahlilni o'ta professional, akademik va tushunarli tilda taqdim eting.
         """
         
         for i, img in enumerate(images):
-            with st.status(f"Sahifa {i+1} tahlil qilinmoqda...") as status:
+            with st.status(f"Varaq {i+1} ekspertizadan o'tkazilmoqda...") as status:
                 try:
                     response = model.generate_content([prompt, img])
-                    st.session_state['results'].append(response.text)
-                    status.update(label=f"Sahifa {i+1} tayyor!", state="complete")
+                    st.session_state['academic_results'].append(response.text)
+                    status.update(label=f"Varaq {idx+1} tahlili yakunlandi!", state="complete")
                 except Exception as e:
-                    st.error(f"Sahifa {i+1}da xato: {e}")
+                    st.error(f"Ekspertiza xatosi: {e}")
 
-    # --- 4. SIDE-BY-SIDE EDITOR (TAHRIRLASH) ---
-    if 'results' in st.session_state and len(st.session_state['results']) > 0:
+    # --- 4. AKADEMIK EDITOR (SIDE-BY-SIDE) ---
+    if 'academic_results' in st.session_state and len(st.session_state['academic_results']) > 0:
         st.markdown("---")
-        st.subheader("🖋 Tahlil Natijalari va Tahrirlash")
+        st.markdown("<h3>🖋 Ilmiy Tahrir va Tanqidiy Matn Ustida Ishlash</h3>", unsafe_allow_html=True)
         
-        final_output_for_word = ""
+        final_academic_report = ""
         
-        for idx, (img, res) in enumerate(zip(images, st.session_state['results'])):
-            st.markdown(f"**Sahifa {idx+1}**")
+        for idx, (img, res) in enumerate(zip(images, st.session_state['academic_results'])):
+            st.markdown(f"#### Varaq {idx+1}")
             col_img, col_edt = st.columns([1, 1])
             
             with col_img:
-                st.image(img, use_container_width=True, caption=f"Asl nusxa - {idx+1}")
+                st.image(img, use_container_width=True, caption=f"Asl Manba (Varaq {idx+1})")
             
             with col_edt:
-                # Har bir sahifa uchun alohida tahrirlash oynasi
-                edited_val = st.text_area(f"Tuzatish kiriting (Sahifa {idx+1}):", value=res, height=450, key=f"edit_{idx}")
-                final_output_for_word += f"\n\n--- SAHIFA {idx+1} ---\n{edited_val}"
+                # Akademik tahrirlash oynasi
+                edited_val = st.text_area(f"Ilmiy tahrir (Varaq {idx+1}):", value=res, height=550, key=f"acad_edit_{idx}")
+                final_academic_report += f"\n\n--- VARAQ {idx+1} ---\n{edited_val}"
 
-        # WORD EXPORT
-        if final_output_for_word:
+        # WORD EXPORT (PROFESSIONAL REPORT)
+        if final_academic_report:
             doc = Document()
-            doc.add_heading('Manuscript AI: Professional Tahlil Hisoboti', 0)
-            doc.add_paragraph(f"Til: {lang} | Uslub: {era}")
-            doc.add_paragraph(final_output_for_word)
+            doc.add_heading('Manuscript AI: Akademik Ekspertiza Hisoboti', 0)
+            doc.add_paragraph(f"Ilmiy soha: {lang}\nPaleografiya: {era}")
+            doc.add_paragraph(final_academic_report)
             
             bio = io.BytesIO()
             doc.save(bio)
             
             st.divider()
             st.download_button(
-                label="📥 Tuzatilgan natijalarni Word (.docx) formatida yuklab olish",
+                label="📥 AKADEMIK HISOBOTNI YUKLAB OLISH (.DOCX)",
                 data=bio.getvalue(),
-                file_name="manuscript_analysis.docx",
+                file_name="academic_manuscript_report.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
             st.balloons()
