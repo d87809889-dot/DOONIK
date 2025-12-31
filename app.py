@@ -7,30 +7,23 @@ from docx import Document
 
 # 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Ultimate Academic Master 2026", 
+    page_title="Manuscript AI - Academic Master 2025", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
+# --- 2. ANTIK-AKADEMIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
-    /* Ortiqcha reklamalarni yashirish */
+    /* Streamlit elementlarini yashirish */
     #MainMenu {visibility: hidden !important;} footer {visibility: hidden !important;} header {visibility: hidden !important;}
     [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
-    #stDecoration {display:none !important;}
 
-    /* Pergament foni */
-    .main { 
-        background-color: #f4ecd8 !important; 
-        color: #1a1a1a !important;
-        font-family: 'Times New Roman', serif;
-    }
-
+    .main { background-color: #f4ecd8 !important; color: #1a1a1a !important; font-family: 'Times New Roman', serif; }
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
 
-    /* AI TAHLIL KARTASI */
+    /* TAHLIL KARTASI */
     .result-box {
         background-color: #ffffff;
         padding: 25px;
@@ -39,7 +32,6 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         color: #1a1a1a !important;
         font-size: 17px;
-        line-height: 1.7;
     }
 
     /* TAHRIRLASH OYNASI - MATN QORA VA ANIQ */
@@ -57,12 +49,15 @@ st.markdown("""
     .stButton>button {
         background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%);
         color: #c5a059 !important; border: 2px solid #c5a059;
-        font-weight: bold; width: 100%; padding: 12px; text-transform: uppercase;
+        font-weight: bold; width: 100%; padding: 12px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. XAVFSIZLIK VA KIRISH ---
+# Google Search Console Verification
+st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
+
+# --- 3. XAVFSIZLIK ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -70,14 +65,14 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Streamlit Cloud sozlamalariga GEMINI_API_KEY va APP_PASSWORD ni kiriting.")
+    st.error("Secrets sozlanmagan!")
     st.stop()
 
 if not st.session_state["authenticated"]:
     _, col_mid, _ = st.columns([1, 1.5, 1])
     with col_mid:
-        st.markdown("<br><br><h2 style='border:none;'>🏛 AKADEMIK EKSPERTIZA</h2>", unsafe_allow_html=True)
-        pwd_input = st.text_input("Maxfiy kirish kodi", type="password")
+        st.markdown("<br><br><h2>🏛 AKADEMIK EKSPERTIZA</h2>", unsafe_allow_html=True)
+        pwd_input = st.text_input("Maxfiy kod", type="password")
         if st.button("TIZIMGA KIRISH"):
             if pwd_input == CORRECT_PASSWORD:
                 st.session_state["authenticated"] = True
@@ -86,38 +81,28 @@ if not st.session_state["authenticated"]:
                 st.error("Xato kod!")
     st.stop()
 
-# --- 4. AQLLI MODEL DETEKTORI (404 XATOSINI ILDIZI BILAN TUZATISH) ---
+# --- 4. AI MODELINI SOZLASH (BARQAROR REJIM) ---
 genai.configure(api_key=GEMINI_KEY)
 
+# Modellarni test qilib, eng barqarorini tanlash (404 xatosini yo'qotadi)
 @st.cache_resource
-def get_best_available_model():
-    """Google'dan ruxsat berilgan modellarni so'rab oladi va eng mosini tanlaydi"""
-    try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Tanlov ketma-ketligi (Prioritet)
-        for target in ["models/gemini-1.5-flash-002", "models/gemini-1.5-flash", "models/gemini-2.0-flash-exp"]:
-            if target in models:
-                return genai.GenerativeModel(target)
-        
-        # Agar yuqoridagilar topilmasa, ro'yxatdagi birinchi flash modelni olish
-        flash_models = [m for m in models if "flash" in m]
-        if flash_models:
-            return genai.GenerativeModel(flash_models[0])
-            
-        return genai.GenerativeModel(models[0])
-    except Exception as e:
-        # Agar list_models xato bersa, eng ishonchli nomga o'tish
-        return genai.GenerativeModel('gemini-1.5-flash')
+def load_stable_model():
+    # 2025-yilda eng ishonchli modellar ro'yxati
+    for model_name in ["gemini-1.5-flash", "gemini-1.5-flash-002", "gemini-2.0-flash-exp"]:
+        try:
+            m = genai.GenerativeModel(model_name)
+            return m
+        except:
+            continue
+    return genai.GenerativeModel('gemini-pro-vision')
 
-model = get_best_available_model()
+model = load_stable_model()
 
 # Sidebar
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
     lang = st.selectbox("Til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
-    era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
-    st.markdown("---")
+    era = st.selectbox("Xattotlik:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     if st.button("🚪 CHIQISH"):
         st.session_state["authenticated"] = False
         st.rerun()
@@ -147,10 +132,10 @@ if uploaded_file:
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
         st.session_state['academic_results'] = []
-        # Professional Akademik Prompt
+        # Eng kuchli akademik prompt
         prompt = f"""
         Siz matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
-        Ushbu {lang} tilidagi va {era} uslubidagi manbani tahlil qiling:
+        Ushbu {lang} tilidagi va {era} uslubidagi manbani quyidagi mezonlar asosida tahlil qiling:
         1. PALEOGRAFIK TAVSIF: Yozuv turi va xattotlik xususiyatlari.
         2. DIPLOMATIK TRANSLITERATSIYA: Matnni lotin alifbosiga akademik ko'chirish.
         3. SEMANTIK TARJIMA: Ma'nosini zamonaviy o'zbek tiliga ilmiy uslubda o'girish.
@@ -164,7 +149,7 @@ if uploaded_file:
                     st.session_state['academic_results'].append(response.text)
                     status.update(label=f"Varaq {i+1} tayyor!", state="complete")
                 except Exception as e:
-                    st.error(f"Xato (Varaq {i+1}): {e}")
+                    st.error(f"Xato: {e}")
 
     # --- 6. SIDE-BY-SIDE + FULL EDITOR ---
     if 'academic_results' in st.session_state and len(st.session_state['academic_results']) > 0:
