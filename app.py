@@ -5,9 +5,9 @@ import pypdfium2 as pdfium
 import io
 from docx import Document
 
-# 1. SAHIFA VA SEO SOZLAMALARI
+# 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Professional Academic Master", 
+    page_title="Manuscript AI - Ultimate Academic Master 2026", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
@@ -16,12 +16,32 @@ st.set_page_config(
 # --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
+    /* Ortiqcha reklamalarni yashirish */
     #MainMenu {visibility: hidden !important;} footer {visibility: hidden !important;} header {visibility: hidden !important;}
     [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
-    .main { background-color: #f4ecd8 !important; color: #1a1a1a !important; font-family: 'Times New Roman', serif; }
+    #stDecoration {display:none !important;}
+
+    /* Pergament foni */
+    .main { 
+        background-color: #f4ecd8 !important; 
+        color: #1a1a1a !important;
+        font-family: 'Times New Roman', serif;
+    }
+
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
-    .result-box { background-color: #ffffff; padding: 25px; border-radius: 12px; border-left: 10px solid #c5a059; box-shadow: 0 10px 25px rgba(0,0,0,0.1); color: #1a1a1a !important; font-size: 17px; }
-    
+
+    /* AI TAHLIL KARTASI */
+    .result-box {
+        background-color: #ffffff;
+        padding: 25px;
+        border-radius: 12px;
+        border-left: 10px solid #c5a059;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        color: #1a1a1a !important;
+        font-size: 17px;
+        line-height: 1.7;
+    }
+
     /* TAHRIRLASH OYNASI - MATN QORA VA ANIQ */
     .stTextArea textarea {
         background-color: #fdfaf1 !important;
@@ -31,12 +51,18 @@ st.markdown("""
         font-size: 18px !important;
         padding: 20px !important;
     }
-    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%); color: #c5a059 !important; border: 2px solid #c5a059; font-weight: bold; width: 100%; padding: 12px; }
+
+    /* Sidebar va Tugmalar */
     section[data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
+    .stButton>button {
+        background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%);
+        color: #c5a059 !important; border: 2px solid #c5a059;
+        font-weight: bold; width: 100%; padding: 12px; text-transform: uppercase;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. XAVFSIZLIK ---
+# --- 3. XAVFSIZLIK VA KIRISH ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -44,69 +70,68 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Streamlit Cloud sozlamalariga kiring.")
+    st.error("Secrets sozlanmagan! Streamlit Cloud sozlamalariga GEMINI_API_KEY va APP_PASSWORD ni kiriting.")
     st.stop()
 
 if not st.session_state["authenticated"]:
     _, col_mid, _ = st.columns([1, 1.5, 1])
     with col_mid:
-        st.markdown("<br><br><h2 style='border:none;'>🏛 AKADEMIK KIRISH</h2>", unsafe_allow_html=True)
-        pwd_input = st.text_input("Maxfiy kod", type="password")
+        st.markdown("<br><br><h2 style='border:none;'>🏛 AKADEMIK EKSPERTIZA</h2>", unsafe_allow_html=True)
+        pwd_input = st.text_input("Maxfiy kirish kodi", type="password")
         if st.button("TIZIMGA KIRISH"):
             if pwd_input == CORRECT_PASSWORD:
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
-                st.error("Xato!")
+                st.error("Xato kod!")
     st.stop()
 
-# --- 4. MODELNI AVTOMATIK ANIQLASH (XATONI YO'QOTISH) ---
+# --- 4. AQLLI MODEL DETEKTORI (404 XATOSINI ILDIZI BILAN TUZATISH) ---
 genai.configure(api_key=GEMINI_KEY)
 
 @st.cache_resource
-def get_working_model():
-    """Google serveridan hozirgi ishlayotgan modelni qidirib topadi"""
+def get_best_available_model():
+    """Google'dan ruxsat berilgan modellarni so'rab oladi va eng mosini tanlaydi"""
     try:
-        # Avval ro'yxatni olamiz
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Eng yaxshi variantlarni tartib bilan tekshiramiz
-        targets = ["models/gemini-1.5-flash-latest", "models/gemini-2.0-flash", "models/gemini-1.5-flash", "models/gemini-pro-vision"]
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        for target in targets:
-            if target in available_models:
+        # Tanlov ketma-ketligi (Prioritet)
+        for target in ["models/gemini-1.5-flash-002", "models/gemini-1.5-flash", "models/gemini-2.0-flash-exp"]:
+            if target in models:
                 return genai.GenerativeModel(target)
         
-        # Agar hech biri topilmasa, ro'yxatdagi birinchi flash modelni olamiz
-        for m in available_models:
-            if 'flash' in m:
-                return genai.GenerativeModel(m)
-        
-        return genai.GenerativeModel(available_models[0])
+        # Agar yuqoridagilar topilmasa, ro'yxatdagi birinchi flash modelni olish
+        flash_models = [m for m in models if "flash" in m]
+        if flash_models:
+            return genai.GenerativeModel(flash_models[0])
+            
+        return genai.GenerativeModel(models[0])
     except Exception as e:
-        st.error(f"Modelni yuklashda xato: {e}")
-        return None
+        # Agar list_models xato bersa, eng ishonchli nomga o'tish
+        return genai.GenerativeModel('gemini-1.5-flash')
 
-model = get_working_model()
+model = get_best_available_model()
 
 # Sidebar
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
-    lang = st.selectbox("Til:", ["Chig'atoy", "Fors", "Arab", "Eski Turkiy"])
-    era = st.selectbox("Uslub:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+    lang = st.selectbox("Til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
+    era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+    st.markdown("---")
     if st.button("🚪 CHIQISH"):
         st.session_state["authenticated"] = False
         st.rerun()
 
 # --- 5. ASOSIY INTERFEYS ---
-st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertizasi</h1>", unsafe_allow_html=True)
+st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertiza Markazi</h1>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Manbani yuklang", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
+uploaded_file = st.file_uploader("Ilmiy manbani yuklang", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
 if uploaded_file:
     if 'images' not in st.session_state or st.session_state.get('last_file') != uploaded_file.name:
         images = []
         if uploaded_file.type == "application/pdf":
-            with st.spinner('Raqamlashtirilmoqda...'):
+            with st.spinner('DPI 300 sifatda raqamlashtirilmoqda...'):
                 pdf = pdfium.PdfDocument(uploaded_file)
                 for i in range(len(pdf)):
                     images.append(pdf[i].render(scale=3).to_pil())
@@ -115,30 +140,33 @@ if uploaded_file:
         st.session_state['images'] = images
         st.session_state['last_file'] = uploaded_file.name
 
-    st.markdown("### 📜 Yuklangan varaqlar")
+    st.markdown("### 📜 Varaqlar")
     cols = st.columns(min(len(st.session_state['images']), 4))
     for idx, img in enumerate(st.session_state['images']):
         cols[idx % 4].image(img, caption=f"Varaq {idx+1}", use_container_width=True)
 
-    if st.button('✨ CHUQUR AKADEMIK TAHLILNI BOSHLASH'):
-        if model is None:
-            st.error("AI modeli ulanmadi. API kalitini tekshiring.")
-        else:
-            st.session_state['academic_results'] = []
-            prompt = f"""
-            Siz qo'lyozmalar bo'yicha dunyo darajasidagi akademiksiz. 
-            Ushbu {lang} tilidagi va {era} uslubidagi manbani tahlil qiling:
-            1. PALEOGRAFIK TAVSIF. 2. TRANSLITERATSIYA (Lotin). 3. SEMANTIK TARJIMA. 4. ILMIY IZOH.
-            """
-            for i, img in enumerate(st.session_state['images']):
-                with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda..."):
-                    try:
-                        response = model.generate_content([prompt, img])
-                        st.session_state['academic_results'].append(response.text)
-                    except Exception as e:
-                        st.error(f"Xato: {e}")
+    if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
+        st.session_state['academic_results'] = []
+        # Professional Akademik Prompt
+        prompt = f"""
+        Siz matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
+        Ushbu {lang} tilidagi va {era} uslubidagi manbani tahlil qiling:
+        1. PALEOGRAFIK TAVSIF: Yozuv turi va xattotlik xususiyatlari.
+        2. DIPLOMATIK TRANSLITERATSIYA: Matnni lotin alifbosiga akademik ko'chirish.
+        3. SEMANTIK TARJIMA: Ma'nosini zamonaviy o'zbek tiliga ilmiy uslubda o'girish.
+        4. ILMIY IZOH: Tarixiy shaxslar va terminlarga sharh.
+        """
+        
+        for i, img in enumerate(st.session_state['images']):
+            with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as status:
+                try:
+                    response = model.generate_content([prompt, img])
+                    st.session_state['academic_results'].append(response.text)
+                    status.update(label=f"Varaq {i+1} tayyor!", state="complete")
+                except Exception as e:
+                    st.error(f"Xato (Varaq {i+1}): {e}")
 
-    # --- 6. EDITOR ---
+    # --- 6. SIDE-BY-SIDE + FULL EDITOR ---
     if 'academic_results' in st.session_state and len(st.session_state['academic_results']) > 0:
         st.divider()
         final_report = ""
@@ -146,16 +174,18 @@ if uploaded_file:
             st.markdown(f"#### 📖 Varaq {idx+1}")
             c1, c2 = st.columns([1, 1.2])
             with c1: st.image(img, use_container_width=True)
-            with c2: st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            edited = st.text_area(f"Tahrir {idx+1}:", value=res, height=400, key=f"ed_{idx}")
+            # Tahrirlash oynasi (MATN QORA VA ANIQ)
+            edited = st.text_area(f"Ilmiy tahrir {idx+1}:", value=res, height=450, key=f"ed_{idx}")
             final_report += f"\n\n--- VARAQ {idx+1} ---\n{edited}"
+            st.markdown("---")
 
         if final_report:
             doc = Document()
-            doc.add_heading('Academic Report', 0)
+            doc.add_heading('Academic Manuscript Report', 0)
             doc.add_paragraph(final_report)
             bio = io.BytesIO()
             doc.save(bio)
-            st.download_button("📥 WORDDA YUKLASH", bio.getvalue(), "report.docx")
+            st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
             st.balloons()
