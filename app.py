@@ -109,3 +109,4 @@ if uploaded_file is not None:
             st.divider()
             st.download_button("📥 Natijani Wordda yuklash", bio.getvalue(), "tahlil.docx")
             st.balloons()
+
