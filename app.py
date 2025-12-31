@@ -7,35 +7,37 @@ from docx import Document
 
 # 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Academic Master 2025", 
+    page_title="Manuscript AI - Ultimate Academic Master 2025", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
-# Tahrirlash oynasidagi matnni qora va fonni pergament qilish uchun maxsus ishlov berildi
+# --- 2. PROFESSIONAL ANTIK-ILMIY DIZAYN (CSS) ---
 st.markdown("""
     <style>
-    /* Ortiqcha reklamalarni yashirish */
+    /* Streamlit va GitHub elementlarini butunlay yashirish */
     #MainMenu {visibility: hidden !important;} footer {visibility: hidden !important;} header {visibility: hidden !important;}
     [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
+    #stDecoration {display:none !important;}
 
-    /* Pergament fon va shriftlar */
+    /* Arxiv pergament foni */
     .main { 
         background-color: #f4ecd8 !important; 
         color: #1a1a1a !important;
         font-family: 'Times New Roman', serif;
     }
 
+    /* Akademik sarlavhalar */
     h1, h2, h3, h4 {
         color: #0c1421 !important;
         font-family: 'Georgia', serif;
         border-bottom: 2px solid #c5a059;
         text-align: center;
+        padding-bottom: 10px;
     }
 
-    /* AI TAHLIL KARTASI (Chatbot uslubi) */
+    /* AI Natija kartasi */
     .result-box {
         background-color: #ffffff;
         padding: 25px;
@@ -45,10 +47,9 @@ st.markdown("""
         color: #1a1a1a !important;
         font-size: 17px;
         line-height: 1.7;
-        margin-bottom: 15px;
     }
 
-    /* TAHRIRLASH OYNASI (TEXT AREA) - MATN ANIQ QORA VA KO'RINARLI */
+    /* TAHRIRLASH OYNASI - MATN HAR DOIM QORA VA ANIQ */
     .stTextArea textarea {
         background-color: #fdfaf1 !important;
         color: #000000 !important; /* MATN RANGI QORA */
@@ -71,14 +72,13 @@ st.markdown("""
         background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%);
         color: #c5a059 !important;
         border: 2px solid #c5a059;
-        font-weight: bold;
-        padding: 12px;
-        width: 100%;
+        font-weight: bold; width: 100%; padding: 12px;
         text-transform: uppercase;
     }
     .stButton>button:hover {
         background: #c5a059 !important;
         color: #0c1421 !important;
+        transform: translateY(-2px);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -94,7 +94,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Streamlit Cloud-dan GEMINI_API_KEY va APP_PASSWORD ni kiriting.")
+    st.error("Secrets sozlanmagan! Streamlit Cloud-dan ma'lumotlarni kiriting.")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -107,32 +107,23 @@ if not st.session_state["authenticated"]:
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
-                st.error("Xato kod!")
+                st.error("Xato!")
     st.stop()
 
-# --- 4. AI MODELINI XATOSIZ SOZLASH (Fallback Tizimi) ---
+# --- 4. AI MODELINI SOZLASH (404 XATOSINI TUZATISH) ---
 genai.configure(api_key=GEMINI_KEY)
 
-# 404 Xatosini yo'qotish uchun modelni bir necha nom bilan tekshiramiz
-@st.cache_resource
-def load_model():
-    model_names = ["gemini-1.5-flash-latest", "gemini-flash-latest", "gemini-1.5-flash"]
-    for name in model_names:
-        try:
-            m = genai.GenerativeModel(name)
-            # Test so'rovi (model borligini tekshirish uchun)
-            return m
-        except:
-            continue
-    return genai.GenerativeModel("gemini-pro-vision") # Oxirgi chora
-
-model = load_model()
+# Google'ning yangi model nomlari (1.5-flash-latest hozirda eng barqarori)
+try:
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+except:
+    model = genai.GenerativeModel('gemini-2.0-flash')
 
 # Sidebar
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
     st.markdown("---")
-    lang = st.selectbox("Hujjat tili:", ["Chig'atoy (Eski o'zbek)", "Fors (Klassik)", "Arab (Ilmiy)", "Usmonli Turk"])
+    lang = st.selectbox("Asl matn tili:", ["Chig'atoy (Eski o'zbek)", "Fors (Klassik)", "Arab (Ilmiy)", "Usmonli Turk"])
     era = st.selectbox("Paleografik uslub:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     st.markdown("---")
     if st.button("🚪 TIZIMDAN CHIQISH"):
@@ -148,7 +139,7 @@ if uploaded_file:
     if 'images' not in st.session_state or st.session_state.get('last_file') != uploaded_file.name:
         images = []
         if uploaded_file.type == "application/pdf":
-            with st.spinner('Raqamlashtirilmoqda (DPI 300)...'):
+            with st.spinner('Manba raqamlashtirilmoqda (DPI 300)...'):
                 pdf = pdfium.PdfDocument(uploaded_file)
                 for i in range(len(pdf)):
                     images.append(pdf[i].render(scale=3).to_pil())
@@ -168,10 +159,10 @@ if uploaded_file:
         prompt = f"""
         Siz qadimgi matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
         Ushbu {lang} tilidagi va {era} uslubidagi manbani quyidagi mezonlar asosida tahlil qiling:
-        1. PALEOGRAFIK TAVSIF: Yozuv turi, xatning o'ziga xos xususiyatlari.
-        2. DIPLOMATIK TRANSLITERATSIYA: Matnni harfma-harf lotin alifbosiga ko'chiring.
-        3. SEMANTIK TARJIMA: Ma'nosini zamonaviy o'zbek tiliga ilmiy va badiiy mahorat bilan o'giring.
-        4. ILMIY IZOH: Tarixiy shaxslar, joy nomlari va arxaik terminlarga akademik sharh bering.
+        1. PALEOGRAFIK TAVSIF: Yozuv turi, xattotlik xususiyatlari va paleografiyasi.
+        2. DIPLOMATIK TRANSLITERATSIYA: Matnni xatosiz lotin alifbosiga o'giring.
+        3. SEMANTIK TARJIMA: Ma'nosini zamonaviy o'zbek tiliga ilmiy uslubda o'giring.
+        4. ILMIY IZOH: Terminlar, shaxslar va joylarga akademik sharh bering.
         """
         
         for i, img in enumerate(st.session_state['images']):
@@ -192,14 +183,12 @@ if uploaded_file:
         for idx, (img, res) in enumerate(zip(st.session_state['images'], st.session_state['academic_results'])):
             st.markdown(f"#### 📖 Sahifa {idx+1}")
             
-            # 1-qator: Rasm va AI natijasi yonma-yon
             col_img, col_res = st.columns([1, 1.2])
             with col_img:
                 st.image(img, use_container_width=True, caption=f"Asl manba {idx+1}")
             with col_res:
                 st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            # 2-qator: Tahrirlash oynasi (Full width, qora matn)
             st.write("**Ushbu sahifa bo'yicha tahrirlangan yakuniy matn:**")
             edited_val = st.text_area("", value=res, height=450, key=f"edit_{idx}", label_visibility="collapsed")
             final_academic_report += f"\n\n--- SAHIFA {idx+1} ---\n{edited_val}"
@@ -208,18 +197,16 @@ if uploaded_file:
         # WORD EXPORT
         if final_academic_report:
             doc = Document()
-            doc.add_heading('Manuscript AI: Professional Akademik Hisobot', 0)
+            doc.add_heading('Manuscript AI: Akademik Hisobot', 0)
             doc.add_paragraph(f"Ilmiy soha: {lang} | Paleografiya: {era}")
             doc.add_paragraph(final_academic_report)
-            
             bio = io.BytesIO()
             doc.save(bio)
-            
             st.divider()
             st.download_button(
                 label="📥 AKADEMIK HISOBOTNI WORDDA YUKLAB OLISH",
                 data=bio.getvalue(),
-                file_name="academic_analysis_report.docx",
+                file_name="academic_report.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
             st.balloons()
