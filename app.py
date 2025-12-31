@@ -21,7 +21,7 @@ st.markdown("""
     [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
     #stDecoration {display:none !important;}
 
-    /* Pergament foni va umumiy ranglar */
+    /* Pergament foni */
     .main { 
         background-color: #f4ecd8 !important; 
         color: #1a1a1a !important;
@@ -41,7 +41,7 @@ st.markdown("""
         font-size: 17px;
     }
 
-    /* TAHRIRLASH OYNASI - MATN HAR DOIM QORA */
+    /* TAHRIRLASH OYNASI */
     .stTextArea textarea {
         background-color: #fdfaf1 !important;
         color: #000000 !important; 
@@ -51,15 +51,19 @@ st.markdown("""
         padding: 20px !important;
     }
 
-    /* CHAT DIZAYNI */
+    /* CHAT DIZAYNI - RANG MUAMMOSINI TUZATISH */
     .chat-bubble {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
-        border: 1px solid #d4af37;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+        background-color: #ffffff !important;
+        color: #000000 !important; /* MATN HAR DOIM QORA */
+        padding: 15px !important;
+        border-radius: 10px !important;
+        margin-bottom: 10px !important;
+        border: 1px solid #d4af37 !important;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.05) !important;
+        font-size: 16px !important;
+        line-height: 1.5 !important;
     }
+    .chat-bubble b { color: #0c1421 !important; } /* Qalin yozuvlar to'q ko'k */
 
     /* Sidebar va Tugmalar */
     section[data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
@@ -82,7 +86,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Streamlit Cloud sozlamalarini tekshiring.")
+    st.error("Secrets sozlanmagan!")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -118,7 +122,6 @@ st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertiza Markazi</h1>", unsafe_allow_htm
 uploaded_file = st.file_uploader("Ilmiy manbani yuklang (PDF/Rasm)", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
 if uploaded_file:
-    # Faylni xotirada saqlash
     if 'imgs' not in st.session_state or st.session_state.get('last_fn') != uploaded_file.name:
         imgs = []
         if uploaded_file.type == "application/pdf":
@@ -130,7 +133,7 @@ if uploaded_file:
             imgs.append(Image.open(uploaded_file))
         st.session_state['imgs'] = imgs
         st.session_state['last_fn'] = uploaded_file.name
-        st.session_state['chat_history'] = {} # Chatni yangilash
+        st.session_state['chat_history'] = {}
 
     st.markdown("### 📜 Varaqlar")
     cols = st.columns(min(len(st.session_state['imgs']), 4))
@@ -158,30 +161,28 @@ if uploaded_file:
         for idx, (img, res) in enumerate(zip(st.session_state['imgs'], st.session_state['res'])):
             st.markdown(f"#### 📖 Varaq {idx+1}")
             
-            # Side-by-side qismi
             c1, c2 = st.columns([1, 1.2])
             with c1:
                 st.image(img, use_container_width=True)
             with c2:
                 st.markdown(f"<div class='result-box'><b>AI Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            # Tahrirlash oynasi (Full width)
+            # Tahrirlash oynasi
             st.write(f"**Varaq {idx+1} bo'yicha yakuniy tahrir:**")
             ed_val = st.text_area("", value=res, height=400, key=f"ed_{idx}", label_visibility="collapsed")
             final_text_for_word += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
-            # --- YANGI: INTERAKTIV CHAT BO'LIMI ---
-            st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan savol-javob")
+            # --- INTERAKTIV CHAT (FIXED COLORS) ---
+            st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
             chat_id = f"chat_{idx}"
             if chat_id not in st.session_state['chat_history']:
                 st.session_state['chat_history'][chat_id] = []
 
-            # Chat tarixini chiqarish
             for chat in st.session_state['chat_history'][chat_id]:
                 st.markdown(f"<div class='chat-bubble'><b>Savol:</b> {chat['q']}<br><b>AI:</b> {chat['a']}</div>", unsafe_allow_html=True)
 
-            user_q = st.text_input("Savol bering (masalan: Ushbu sahifadagi shaxslar haqida ma'lumot?):", key=f"q_{idx}")
-            if st.button(f"Soran {idx+1}", key=f"btn_{idx}"):
+            user_q = st.text_input("Savol bering:", key=f"q_{idx}")
+            if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                 if user_q:
                     with st.spinner("AI tahlil qilmoqda..."):
                         chat_prompt = f"Ushbu qo'lyozma matni va tahlili asosida savolga akademik javob bering: {user_q}\nMatn: {ed_val}"
