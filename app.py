@@ -5,7 +5,7 @@ import pypdfium2 as pdfium
 import io
 from docx import Document
 
-# 1. SEO VA ILMIY MUHIT SOZLAMALARI
+# 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
 st.set_page_config(
     page_title="Manuscript AI - Academic Master 2026", 
     page_icon="📜", 
@@ -13,10 +13,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESSIONAL ANTIK-AKADEMIK DIZAYN (KUCHAYTIRILGAN CSS) ---
+# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
-    /* Reklamalarni ildizi bilan yashirish */
+    /* Reklamalarni yashirish */
     #MainMenu {visibility: hidden !important;} footer {visibility: hidden !important;} header {visibility: hidden !important;}
     [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
     #stDecoration {display:none !important;}
@@ -28,7 +28,17 @@ st.markdown("""
         font-family: 'Times New Roman', serif;
     }
 
-    h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
+    h1, h2, h3 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
+
+    /* TAHRIRLASH OYNASI - MATN QORA VA ANIQ */
+    .stTextArea textarea {
+        background-color: #fdfaf1 !important;
+        color: #000000 !important; 
+        border: 2px solid #c5a059 !important;
+        font-family: 'Courier New', monospace !important;
+        font-size: 18px !important;
+        padding: 20px !important;
+    }
 
     /* AI TAHLIL KARTASI */
     .result-box {
@@ -39,17 +49,6 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
         color: #1a1a1a !important;
         font-size: 17px !important;
-        margin-bottom: 15px !important;
-    }
-
-    /* TAHRIRLASH OYNASI - MATN QORA VA ANIQ KO'RINARLI */
-    .stTextArea textarea {
-        background-color: #fdfaf1 !important;
-        color: #000000 !important; /* MATN HAR DOIM QORA */
-        border: 2px solid #c5a059 !important;
-        font-family: 'Courier New', monospace !important;
-        font-size: 18px !important;
-        padding: 20px !important;
     }
 
     /* Sidebar va Tugmalar */
@@ -62,9 +61,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Search Console Verification
-st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
-
 # --- 3. XAVFSIZLIK ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -73,14 +69,14 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Streamlit Cloud sozlamalarini tekshiring.")
+    st.error("Secrets sozlanmagan! Streamlit Settings > Secrets bo'limini tekshiring.")
     st.stop()
 
 if not st.session_state["authenticated"]:
     _, col_mid, _ = st.columns([1, 1.5, 1])
     with col_mid:
         st.markdown("<br><br><h2>🏛 AKADEMIK EKSPERTIZA</h2>", unsafe_allow_html=True)
-        pwd_input = st.text_input("Maxfiy kirish kodi", type="password")
+        pwd_input = st.text_input("Maxfiy kod", type="password")
         if st.button("TIZIMGA KIRISH"):
             if pwd_input == CORRECT_PASSWORD:
                 st.session_state["authenticated"] = True
@@ -89,25 +85,23 @@ if not st.session_state["authenticated"]:
                 st.error("Xato kod!")
     st.stop()
 
-# --- 4. MODELNI AVTOMATIK ANIQLASH (404 XATOSINI TUZATISH) ---
+# --- 4. AI MODELINI BARQAROR SOZLASH (FIX 404/429) ---
 genai.configure(api_key=GEMINI_KEY)
 
-@st.cache_resource
-def get_model():
-    """Hozirgi vaqtda ishlayotgan modelni Google'dan qidirib topadi"""
-    # 2026-yilda eng barqaror modellar ro'yxati
-    try:
-        available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Tanlov ustuvorligi
-        for target in ["models/gemini-1.5-flash-latest", "models/gemini-1.5-flash", "models/gemini-2.0-flash"]:
-            if target in available:
-                return genai.GenerativeModel(target)
-        return genai.GenerativeModel(available[0])
-    except:
-        # Agar ro'yxatni olib bo'lmasa, eng ishonchli taxmin
-        return genai.GenerativeModel('gemini-1.5-flash')
+def load_robust_model():
+    """Modellarni tartib bilan tekshiradi, 404 va 429 xatolarini chetlab o'tadi"""
+    # Eng barqaror modellarni sinash tartibi
+    model_options = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro-vision"]
+    
+    for m_name in model_options:
+        try:
+            m = genai.GenerativeModel(m_name)
+            return m
+        except:
+            continue
+    return None
 
-model = get_model()
+model = load_robust_model()
 
 # Sidebar
 with st.sidebar:
@@ -143,26 +137,27 @@ if uploaded_file:
         cols[idx % 4].image(img, caption=f"Varaq {idx+1}", use_container_width=True)
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
-        st.session_state['academic_results'] = []
-        prompt = f"""
-        Siz matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
-        Ushbu {lang} tilidagi va {era} uslubidagi manbani quyidagi mezonlar asosida tahlil qiling:
-        1. PALEOGRAFIK TAVSIF: Yozuv turi va xattotlik xususiyatlari.
-        2. DIPLOMATIK TRANSLITERATSIYA: Matnni harfma-harf lotinga akademik ko'chirish.
-        3. SEMANTIK TARJIMA: Ma'nosini zamonaviy o'zbek tiliga ilmiy uslubda o'girish.
-        4. ILMIY IZOH: Tarixiy shaxslar va terminlarga akademik sharh.
-        """
-        
-        for i, img in enumerate(st.session_state['images']):
-            with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as status:
-                try:
-                    response = model.generate_content([prompt, img])
-                    st.session_state['academic_results'].append(response.text)
-                    status.update(label=f"Varaq {i+1} tayyor!", state="complete")
-                except Exception as e:
-                    st.error(f"Xato (Varaq {i+1}): {e}")
+        if model is None:
+            st.error("AI modelini yuklab bo'lmadi. API kalitini tekshiring.")
+        else:
+            st.session_state['academic_results'] = []
+            prompt = f"""
+            Siz matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
+            Ushbu {lang} tilidagi va {era} uslubidagi manbani quyidagi mezonlar asosida tahlil qiling:
+            1. PALEOGRAFIK TAVSIF. 2. DIPLOMATIK TRANSLITERATSIYA. 3. SEMANTIK TARJIMA. 4. ILMIY IZOH.
+            Javobni o'ta professional akademik tilda bering.
+            """
+            
+            for i, img in enumerate(st.session_state['images']):
+                with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as status:
+                    try:
+                        response = model.generate_content([prompt, img])
+                        st.session_state['academic_results'].append(response.text)
+                        status.update(label=f"Varaq {i+1} tayyor!", state="complete")
+                    except Exception as e:
+                        st.error(f"Xato (Varaq {idx+1}): {e}")
 
-    # --- 6. SIDE-BY-SIDE + FULL EDITOR (MATN QORA VA KO'RINARLI) ---
+    # --- 6. SIDE-BY-SIDE + EDITOR ---
     if 'academic_results' in st.session_state and len(st.session_state['academic_results']) > 0:
         st.divider()
         st.markdown("### 🖋 Natijalar va Ilmiy Tahrir")
@@ -170,17 +165,13 @@ if uploaded_file:
         final_report = ""
         for idx, (img, res) in enumerate(zip(st.session_state['images'], st.session_state['academic_results'])):
             st.markdown(f"#### 📖 Varaq {idx+1}")
-            
-            # Rasm va AI natijasi yonma-yon
             col_img, col_res = st.columns([1, 1.2])
             with col_img:
                 st.image(img, use_container_width=True)
             with col_res:
-                st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='result-box'><b>AI Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            # Tahrirlash oynasi (MATN RANGI QORA QILINDI)
-            st.write("**Ushbu sahifa bo'yicha tahrirlangan yakuniy matn (Wordga saqlanadi):**")
-            edited = st.text_area("", value=res, height=450, key=f"ed_{idx}", label_visibility="collapsed")
+            edited = st.text_area(f"Tahrir {idx+1}:", value=res, height=450, key=f"ed_{idx}", label_visibility="collapsed")
             final_report += f"\n\n--- VARAQ {idx+1} ---\n{edited}"
             st.markdown("---")
 
