@@ -16,12 +16,10 @@ st.set_page_config(
 # --- 2. PROFESSIONAL ANTIK-AKADEMIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
-    /* Streamlit reklamalarini yashirish */
     #MainMenu {visibility: hidden !important;} footer {visibility: hidden !important;} header {visibility: hidden !important;}
     [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
     #stDecoration {display:none !important;}
 
-    /* Pergament foni */
     .main { 
         background-color: #f4ecd8 !important; 
         color: #1a1a1a !important;
@@ -30,7 +28,6 @@ st.markdown("""
 
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
 
-    /* AI TAHLIL KARTASI */
     .result-box {
         background-color: #ffffff !important;
         padding: 25px !important;
@@ -38,10 +35,9 @@ st.markdown("""
         border-left: 10px solid #c5a059 !important;
         box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
         color: #1a1a1a !important;
-        font-size: 17px;
+        font-size: 17px !important;
     }
 
-    /* TAHRIRLASH OYNASI */
     .stTextArea textarea {
         background-color: #fdfaf1 !important;
         color: #000000 !important; 
@@ -51,21 +47,6 @@ st.markdown("""
         padding: 20px !important;
     }
 
-    /* CHAT DIZAYNI - RANG MUAMMOSINI TUZATISH */
-    .chat-bubble {
-        background-color: #ffffff !important;
-        color: #000000 !important; /* MATN HAR DOIM QORA */
-        padding: 15px !important;
-        border-radius: 10px !important;
-        margin-bottom: 10px !important;
-        border: 1px solid #d4af37 !important;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.05) !important;
-        font-size: 16px !important;
-        line-height: 1.5 !important;
-    }
-    .chat-bubble b { color: #0c1421 !important; } /* Qalin yozuvlar to'q ko'k */
-
-    /* Sidebar va Tugmalar */
     section[data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
     .stButton>button {
         background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important;
@@ -75,9 +56,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Search Console Verification
-st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
-
 # --- 3. XAVFSIZLIK ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -86,7 +64,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan!")
+    st.error("Secrets sozlanmagan! Streamlit Cloud sozlamalarini tekshiring.")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -106,7 +84,7 @@ if not st.session_state["authenticated"]:
 genai.configure(api_key=GEMINI_KEY)
 model = genai.GenerativeModel('gemini-flash-latest')
 
-# Sidebar sozlamalari
+# Sidebar
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
     lang = st.selectbox("Asl til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
@@ -118,7 +96,6 @@ with st.sidebar:
 
 # --- 5. ASOSIY INTERFEYS ---
 st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertiza Markazi</h1>", unsafe_allow_html=True)
-
 uploaded_file = st.file_uploader("Ilmiy manbani yuklang (PDF/Rasm)", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
 if uploaded_file:
@@ -143,7 +120,6 @@ if uploaded_file:
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
         st.session_state['res'] = []
         prompt = f"Siz matnshunos akademiksiz. {lang} va {era} uslubidagi qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
-        
         for i, img in enumerate(st.session_state['imgs']):
             with st.status(f"Varaq {i+1} o'qilmoqda..."):
                 try:
@@ -152,7 +128,7 @@ if uploaded_file:
                 except Exception as e:
                     st.error(f"Xato: {e}")
 
-    # --- 6. OPTIMALLASHGAN TAHLIL, TAHRIR VA INTERAKTIV CHAT ---
+    # --- 6. TAHLIL, TAHRIR VA INTERAKTIV CHAT ---
     if 'res' in st.session_state and len(st.session_state['res']) > 0:
         st.divider()
         st.markdown("### 🖋 Natijalar va Ilmiy Tahrir")
@@ -162,26 +138,28 @@ if uploaded_file:
             st.markdown(f"#### 📖 Varaq {idx+1}")
             
             c1, c2 = st.columns([1, 1.2])
-            with c1:
-                st.image(img, use_container_width=True)
-            with c2:
-                st.markdown(f"<div class='result-box'><b>AI Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
+            with c1: st.image(img, use_container_width=True)
+            with c2: st.markdown(f"<div class='result-box'><b>AI Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            # Tahrirlash oynasi
-            st.write(f"**Varaq {idx+1} bo'yicha yakuniy tahrir:**")
-            ed_val = st.text_area("", value=res, height=400, key=f"ed_{idx}", label_visibility="collapsed")
+            ed_val = st.text_area(f"Varaq {idx+1} bo'yicha tahrir:", value=res, height=400, key=f"ed_{idx}")
             final_text_for_word += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
-            # --- INTERAKTIV CHAT (FIXED COLORS) ---
+            # --- CHAT BO'LIMI (INLINE STYLE BILAN MATN KO'RINISHINI MAJBURIY TUZATISH) ---
             st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
             chat_id = f"chat_{idx}"
             if chat_id not in st.session_state['chat_history']:
                 st.session_state['chat_history'][chat_id] = []
 
+            # Chat tarixini chiqarish (Inline CSS orqali ranglarni majburlash)
             for chat in st.session_state['chat_history'][chat_id]:
-                st.markdown(f"<div class='chat-bubble'><b>Savol:</b> {chat['q']}<br><b>AI:</b> {chat['a']}</div>", unsafe_allow_html=True)
+                # USER SAVOLI
+                st.markdown(f"""<div style="background-color: #e2e8f0; color: #000000; padding: 12px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #1e3a8a;">
+                <b>Savol:</b> {chat['q']}</div>""", unsafe_allow_html=True)
+                # AI JAVOBI
+                st.markdown(f"""<div style="background-color: #ffffff; color: #1a1a1a; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #d4af37; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                <b>AI:</b> {chat['a']}</div>""", unsafe_allow_html=True)
 
-            user_q = st.text_input("Savol bering:", key=f"q_{idx}")
+            user_q = st.text_input(f"Savol yozing ({idx+1}):", key=f"q_{idx}")
             if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                 if user_q:
                     with st.spinner("AI tahlil qilmoqda..."):
@@ -189,10 +167,8 @@ if uploaded_file:
                         chat_res = model.generate_content([chat_prompt, img])
                         st.session_state['chat_history'][chat_id].append({"q": user_q, "a": chat_res.text})
                         st.rerun()
-            
             st.markdown("---")
 
-        # WORD EXPORT
         if final_text_for_word:
             doc = Document()
             doc.add_heading('Academic Manuscript Report', 0)
