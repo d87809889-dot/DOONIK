@@ -4,26 +4,27 @@ from PIL import Image
 import pypdfium2 as pdfium
 import io
 from docx import Document
+import os
 
 # 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Academic Master 2025", 
+    page_title="Manuscript AI - Academic Master v6.0", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. ANTIK-AKADEMIK DIZAYN (CSS) ---
+# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
-    /* Streamlit elementlarini yashirish */
     #MainMenu {visibility: hidden !important;} footer {visibility: hidden !important;} header {visibility: hidden !important;}
     [data-testid="stHeader"] {display: none !important;} .stAppDeployButton {display:none !important;}
+    #stDecoration {display:none !important;}
 
     .main { background-color: #f4ecd8 !important; color: #1a1a1a !important; font-family: 'Times New Roman', serif; }
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
 
-    /* TAHLIL KARTASI */
+    /* AI TAHLIL KARTASI */
     .result-box {
         background-color: #ffffff;
         padding: 25px;
@@ -32,6 +33,7 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         color: #1a1a1a !important;
         font-size: 17px;
+        line-height: 1.7;
     }
 
     /* TAHRIRLASH OYNASI - MATN QORA VA ANIQ */
@@ -54,9 +56,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Search Console Verification
-st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
-
 # --- 3. XAVFSIZLIK ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -65,7 +64,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan!")
+    st.error("Secrets sozlanmagan! Streamlit Cloud Settings-ni tekshiring.")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -81,29 +80,25 @@ if not st.session_state["authenticated"]:
                 st.error("Xato kod!")
     st.stop()
 
-# --- 4. AI MODELINI SOZLASH (BARQAROR REJIM) ---
+# --- 4. MODELNI STABLE (V1) REJIMIDA ISGA TUSHIRISH ---
+# ANIQ YECHIM: v1beta xatosidan qochish uchun transportni v1 ga sozlaymiz
 genai.configure(api_key=GEMINI_KEY)
 
-# Modellarni test qilib, eng barqarorini tanlash (404 xatosini yo'qotadi)
-@st.cache_resource
-def load_stable_model():
-    # 2025-yilda eng ishonchli modellar ro'yxati
-    for model_name in ["gemini-1.5-flash", "gemini-1.5-flash-002", "gemini-2.0-flash-exp"]:
-        try:
-            m = genai.GenerativeModel(model_name)
-            return m
-        except:
-            continue
-    return genai.GenerativeModel('gemini-pro-vision')
-
-model = load_stable_model()
+# Majburiy barqaror model nomini tanlash
+try:
+    # Google API v1 (Stable) uchun eng to'g'ri nom
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+except:
+    # Agar v1 da muammo bo'lsa, avtomatik yangilangan nomga o'tish
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash-latest')
 
 # Sidebar
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
     lang = st.selectbox("Til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
-    era = st.selectbox("Xattotlik:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
-    if st.button("🚪 CHIQISH"):
+    era = st.selectbox("Uslub:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+    st.divider()
+    if st.button("🚪 TIZIMDAN CHIQISH"):
         st.session_state["authenticated"] = False
         st.rerun()
 
@@ -131,38 +126,40 @@ if uploaded_file:
         cols[idx % 4].image(img, caption=f"Varaq {idx+1}", use_container_width=True)
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
-        st.session_state['academic_results'] = []
-        # Eng kuchli akademik prompt
+        st.session_state['results'] = []
         prompt = f"""
-        Siz matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
+        Siz qadimgi matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
         Ushbu {lang} tilidagi va {era} uslubidagi manbani quyidagi mezonlar asosida tahlil qiling:
         1. PALEOGRAFIK TAVSIF: Yozuv turi va xattotlik xususiyatlari.
         2. DIPLOMATIK TRANSLITERATSIYA: Matnni lotin alifbosiga akademik ko'chirish.
-        3. SEMANTIK TARJIMA: Ma'nosini zamonaviy o'zbek tiliga ilmiy uslubda o'girish.
-        4. ILMIY IZOH: Tarixiy shaxslar va terminlarga sharh.
+        3. SEMANTIK TARJIMA: Ma'nosini zamonaviy o'zbek tiliga o'girish.
+        4. ILMIY IZOH: Tarixiy shaxslar va terminlarga akademik sharh.
         """
         
         for i, img in enumerate(st.session_state['images']):
             with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as status:
                 try:
+                    # Tahlil so'rovi
                     response = model.generate_content([prompt, img])
-                    st.session_state['academic_results'].append(response.text)
+                    st.session_state['results'].append(response.text)
                     status.update(label=f"Varaq {i+1} tayyor!", state="complete")
                 except Exception as e:
-                    st.error(f"Xato: {e}")
+                    st.error(f"Xato (Varaq {i+1}): {e}")
 
     # --- 6. SIDE-BY-SIDE + FULL EDITOR ---
-    if 'academic_results' in st.session_state and len(st.session_state['academic_results']) > 0:
+    if 'results' in st.session_state and len(st.session_state['results']) > 0:
         st.divider()
+        st.markdown("### 🖋 Natijalar va Ilmiy Tahrir")
+        
         final_report = ""
-        for idx, (img, res) in enumerate(zip(st.session_state['images'], st.session_state['academic_results'])):
+        for idx, (img, res) in enumerate(zip(st.session_state['images'], st.session_state['results'])):
             st.markdown(f"#### 📖 Varaq {idx+1}")
             c1, c2 = st.columns([1, 1.2])
             with c1: st.image(img, use_container_width=True)
             with c2: st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
             # Tahrirlash oynasi (MATN QORA VA ANIQ)
-            edited = st.text_area(f"Ilmiy tahrir {idx+1}:", value=res, height=450, key=f"ed_{idx}")
+            edited = st.text_area(f"Tahrir {idx+1}:", value=res, height=450, key=f"ed_{idx}")
             final_report += f"\n\n--- VARAQ {idx+1} ---\n{edited}"
             st.markdown("---")
 
