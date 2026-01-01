@@ -186,3 +186,4 @@ if uploaded_file:
             doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
             st.balloons()
+
