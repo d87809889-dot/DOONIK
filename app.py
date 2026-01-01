@@ -9,26 +9,29 @@ import time
 
 # 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Academic Master 2026", 
+    page_title="Manuscript AI - Academic Master v15.0", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESSIONAL ANTIK-AKADEMIK DIZAYN (CSS) ---
+# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
     #MainMenu, footer, header {visibility: hidden !important;}
-    .stAppDeployButton {display:none !important;}
-    #stDecoration {display:none !important;}
     .main { background-color: #f4ecd8 !important; color: #1a1a1a !important; font-family: 'Times New Roman', serif; }
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
-    .result-box { background-color: #ffffff; padding: 25px; border-radius: 12px; border-left: 10px solid #c5a059; box-shadow: 0 10px 25px rgba(0,0,0,0.1); color: #1a1a1a !important; font-size: 17px; }
-    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000000 !important; border: 2px solid #c5a059 !important; font-family: 'Courier New', monospace !important; font-size: 18px; }
+    .result-box { background-color: #ffffff; padding: 25px; border-radius: 12px; border-left: 10px solid #c5a059; box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important; color: #000000 !important; font-size: 17px; }
+    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000000 !important; border: 2px solid #c5a059 !important; font-family: 'Courier New', monospace !important; }
+    .chat-bubble-user { background-color: #e2e8f0; color: #000000 !important; padding: 12px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #1e3a8a; }
+    .chat-bubble-ai { background-color: #ffffff; color: #1a1a1a !important; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #d4af37; }
     section[data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
-    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%); color: #c5a059 !important; font-weight: bold; width: 100%; padding: 12px; }
+    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important; color: #c5a059 !important; font-weight: bold; width: 100%; padding: 12px; }
     </style>
 """, unsafe_allow_html=True)
+
+# Google Search Console Verification
+st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
 
 # --- 3. XAVFSIZLIK ---
 if "authenticated" not in st.session_state:
@@ -38,7 +41,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets topilmadi!")
+    st.error("Secrets sozlanmagan! Streamlit Settings > Secrets qismini tekshiring.")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -51,40 +54,30 @@ if not st.session_state["authenticated"]:
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
-                st.error("Xato!")
+                st.error("Xato kod!")
     st.stop()
 
-# --- 4. MODELNI JONLI TEKSHIRIB YUKLASH (404 VA 429 FIX) ---
+# --- 4. AI MODELINI BARQAROR SOZLASH (1,500 LIMITLI MODEL) ---
 genai.configure(api_key=GEMINI_KEY)
 
-@st.cache_resource
-def load_best_stable_model():
-    """Serverdan hozirgi ishlayotgan 1.5 Flash nomini qidiradi"""
-    try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Faqat 1500 talik limitga ega modellarni tanlaymiz
-        for target in ["models/gemini-1.5-flash-latest", "models/gemini-1.5-flash", "models/gemini-flash-latest"]:
-            if target in models:
-                return genai.GenerativeModel(model_name=target)
-        return genai.GenerativeModel(model_name=models[0])
-    except:
-        return genai.GenerativeModel(model_name='gemini-1.5-flash')
-
-model = load_best_stable_model()
+# MUHIM: 2.5 modelidan voz kechib, 1500 limitli 1.5 Flashga qaytamiz.
+# models/ prefiksi orqali v1-stable tizimiga ulanamiz.
+model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
 
 # Sidebar
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
-    lang = st.selectbox("Til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
-    era = st.selectbox("Xat:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
-    st.divider()
+    lang = st.selectbox("Asl til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
+    era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+    st.markdown("---")
+    st.caption("🚀 Model: Stable High-Quota (1500 RPD)")
     if st.button("🚪 CHIQISH"):
         st.session_state["authenticated"] = False
         st.rerun()
 
 # --- 5. ASOSIY INTERFEYS ---
-st.markdown("<h1>Raqamli Qo'lyozmalar Markazi</h1>", unsafe_allow_html=True)
-uploaded_file = st.file_uploader("Faylni yuklang", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
+st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertiza Markazi</h1>", unsafe_allow_html=True)
+uploaded_file = st.file_uploader("Ilmiy manbani yuklang (PDF/Rasm)", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
 if 'imgs' not in st.session_state: st.session_state['imgs'] = []
 if 'academic_results' not in st.session_state: st.session_state['academic_results'] = []
@@ -96,8 +89,9 @@ if uploaded_file:
             imgs = []
             if uploaded_file.type == "application/pdf":
                 pdf = pdfium.PdfDocument(uploaded_file)
+                # Xotira uchun max 15 sahifa, DPI 200 (scale=2)
                 for i in range(min(len(pdf), 15)):
-                    imgs.append(pdf[i].render(scale=3).to_pil())
+                    imgs.append(pdf[i].render(scale=2).to_pil())
                     gc.collect()
                 pdf.close()
             else:
@@ -113,57 +107,58 @@ if uploaded_file:
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
         new_results = []
-        prompt = f"Siz matnshunos akademiksiz. {lang} va {era} uslubidagi qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
+        prompt = f"Siz matnshunos akademiksiz. {lang} va {era} xatidagi ushbu qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
+        
         for i, img in enumerate(st.session_state['imgs']):
             with st.status(f"Varaq {i+1} o'qilmoqda...") as status:
                 try:
                     response = model.generate_content([prompt, img])
                     new_results.append(response.text)
                     status.update(label=f"Varaq {i+1} tayyor!", state="complete")
-                    time.sleep(4) # Limit himoyasi
+                    time.sleep(5) # RPM Limit (15/min) dan asrash uchun 5 soniya kutish
                 except Exception as e:
                     new_results.append(f"Xato: {e}")
         st.session_state['academic_results'] = new_results
 
-    # --- 6. TAHLIL VA INTERAKTIV CHAT ---
+    # --- 6. TAHLIL, TAHRIR VA CHAT ---
     if st.session_state['academic_results']:
         st.divider()
-        final_text_doc = ""
+        final_text_out = ""
         for idx, (img, res) in enumerate(zip(st.session_state['imgs'], st.session_state['academic_results'])):
             st.markdown(f"#### 📖 Varaq {idx+1}")
+            
             c1, c2 = st.columns([1, 1.2])
             with c1: st.image(img, width="stretch")
-            with c2: st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            ed_val = st.text_area(f"Tahrir {idx+1}:", value=res, height=400, key=f"ed_{idx}")
-            final_text_doc += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
+            # Tahrirlash oynasi (MATN QORA VA ANIQ)
+            ed_val = st.text_area(f"Varaq {idx+1} tahriri:", value=res, height=400, key=f"ed_{idx}")
+            final_text_out += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
-            # Interaktiv Chat (Fixed Colors)
+            # Interaktiv Chat
             st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
             chat_id = f"chat_{idx}"
             if chat_id not in st.session_state['chat_histories']: st.session_state['chat_histories'][chat_id] = []
 
             for chat in st.session_state['chat_histories'][chat_id]:
-                st.markdown(f"""<div style="background-color: #e2e8f0; color: #000000 !important; padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #1e3a8a;">
-                <b style="color: #1e3a8a;">Savol:</b> {chat['q']}</div>""", unsafe_allow_html=True)
-                st.markdown(f"""<div style="background-color: #ffffff; color: #000000 !important; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #d4af37;">
-                <b style="color: #0c1421;">AI Javobi:</b> {chat['a']}</div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class='chat-bubble-user'><b>Savol:</b> {chat['q']}</div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class='chat-bubble-ai'><b>AI:</b> {chat['a']}</div>""", unsafe_allow_html=True)
 
-            user_q = st.text_input("Savol bering:", key=f"q_in_{idx}")
+            user_q = st.text_input("Savol yozing:", key=f"q_in_{idx}")
             if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                 if user_q:
                     try:
-                        # Chat tejamkorligi: rasm yuborilmaydi
+                        # Tejamkor muloqot (faqat matn yuboramiz, token tejash uchun)
                         chat_res = model.generate_content(f"Hujjat tahlili: {ed_val}\nSavol: {user_q}\nAkademik javob ber.")
                         st.session_state['chat_histories'][chat_id].append({"q": user_q, "a": chat_res.text})
                         st.rerun()
-                    except Exception as e:
+                    except:
                         st.error("Limit oshdi. 60 soniya kuting.")
             st.markdown("---")
 
-        if final_text_doc:
+        if final_text_out:
             doc = Document()
-            doc.add_paragraph(final_text_doc)
+            doc.add_paragraph(final_text_out)
             bio = io.BytesIO()
             doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
