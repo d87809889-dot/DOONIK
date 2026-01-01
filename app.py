@@ -162,3 +162,4 @@ if uploaded_file:
             bio = io.BytesIO()
             doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
+
