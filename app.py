@@ -7,9 +7,9 @@ from docx import Document
 import gc
 import time
 
-# 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
+# 1. TIZIM VA SEO SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Academic Master v15.0", 
+    page_title="Manuscript AI - Enterprise Academic 2026", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
@@ -21,19 +21,16 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden !important;}
     .main { background-color: #f4ecd8 !important; color: #1a1a1a !important; font-family: 'Times New Roman', serif; }
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
-    .result-box { background-color: #ffffff; padding: 25px; border-radius: 12px; border-left: 10px solid #c5a059; box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important; color: #000000 !important; font-size: 17px; }
-    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000000 !important; border: 2px solid #c5a059 !important; font-family: 'Courier New', monospace !important; }
-    .chat-bubble-user { background-color: #e2e8f0; color: #000000 !important; padding: 12px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #1e3a8a; }
-    .chat-bubble-ai { background-color: #ffffff; color: #1a1a1a !important; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #d4af37; }
+    .result-box { background-color: #ffffff; padding: 25px; border-radius: 12px; border-left: 10px solid #c5a059; box-shadow: 0 10px 25px rgba(0,0,0,0.05); color: #000000 !important; }
+    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000000 !important; border: 2px solid #c5a059 !important; font-size: 16px !important; }
+    .chat-bubble-user { background-color: #e2e8f0; color: #000000 !important; padding: 12px; border-radius: 8px; border-left: 5px solid #1e3a8a; margin-bottom: 5px; }
+    .chat-bubble-ai { background-color: #ffffff; color: #1a1a1a !important; padding: 12px; border-radius: 8px; border: 1px solid #d4af37; margin-bottom: 15px; }
     section[data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
-    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important; color: #c5a059 !important; font-weight: bold; width: 100%; padding: 12px; }
+    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%); color: #c5a059 !important; font-weight: bold; width: 100%; padding: 10px; border-radius: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
-# Google Search Console Verification
-st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
-
-# --- 3. XAVFSIZLIK ---
+# --- 3. XAVFSIZLIK VA SECRETS ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -41,7 +38,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Streamlit Settings > Secrets qismini tekshiring.")
+    st.error("Secrets sozlanmagan! Settings > Secrets qismini tekshiring.")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -57,40 +54,42 @@ if not st.session_state["authenticated"]:
                 st.error("Xato kod!")
     st.stop()
 
-# --- 4. AI MODELINI BARQAROR SOZLASH (1,500 LIMITLI MODEL) ---
+# --- 4. AI MODELINI MAJBURIY BARQAROR SOZLASH (FIX 404 & 429) ---
 genai.configure(api_key=GEMINI_KEY)
 
-# MUHIM: 2.5 modelidan voz kechib, 1500 limitli 1.5 Flashga qaytamiz.
-# models/ prefiksi orqali v1-stable tizimiga ulanamiz.
+# Risk-free model tanlovi: Faqat 1.5 Flash
+# models/ prefiksi orqali v1 barqaror tizimga ulanadi
 model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
 
-# Sidebar
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
-    lang = st.selectbox("Asl til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
-    era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+    lang = st.selectbox("Hujjat tili:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
+    era = st.selectbox("Paleografik uslub:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     st.markdown("---")
-    st.caption("🚀 Model: Stable High-Quota (1500 RPD)")
-    if st.button("🚪 CHIQISH"):
+    st.caption("🚀 Rejim: Barqaror (1500 RPD)")
+    st.caption("♻️ Sifat: DPI 200 (Optimallashgan)")
+    if st.button("🚪 TIZIMDAN CHIQISH"):
         st.session_state["authenticated"] = False
         st.rerun()
 
 # --- 5. ASOSIY INTERFEYS ---
-st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertiza Markazi</h1>", unsafe_allow_html=True)
+st.markdown("<h1>Raqamli Qo'lyozmalar bo'yicha Ilmiy Markaz</h1>", unsafe_allow_html=True)
 uploaded_file = st.file_uploader("Ilmiy manbani yuklang (PDF/Rasm)", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
+# Session state xotirasini xavfsiz boshqarish
 if 'imgs' not in st.session_state: st.session_state['imgs'] = []
 if 'academic_results' not in st.session_state: st.session_state['academic_results'] = []
 if 'chat_histories' not in st.session_state: st.session_state['chat_histories'] = {}
 
 if uploaded_file:
     if st.session_state.get('last_fn') != uploaded_file.name:
-        with st.spinner('DPI 300 sifatda tayyorlanmoqda...'):
+        with st.spinner('Manba qayta ishlanmoqda (DPI 200)...'):
             imgs = []
             if uploaded_file.type == "application/pdf":
                 pdf = pdfium.PdfDocument(uploaded_file)
-                # Xotira uchun max 15 sahifa, DPI 200 (scale=2)
+                # Xotira xavfsizligi uchun max 15 sahifa
                 for i in range(min(len(pdf), 15)):
+                    # DPI 200 (scale=2) - Token va RAM tejash uchun eng ma'quli
                     imgs.append(pdf[i].render(scale=2).to_pil())
                     gc.collect()
                 pdf.close()
@@ -103,52 +102,55 @@ if uploaded_file:
 
     cols = st.columns(min(len(st.session_state['imgs']), 4))
     for idx, img in enumerate(st.session_state['imgs']):
-        cols[idx % 4].image(img, caption=f"Varaq {idx+1}", width="stretch")
+        cols[idx % 4].image(img, caption=f"Varaq {idx+1}", width='stretch')
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
         new_results = []
-        prompt = f"Siz matnshunos akademiksiz. {lang} va {era} xatidagi ushbu qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
-        
+        prompt = f"""
+        Siz qadimgi matnshunos va paleograf akademiksiz. 
+        Ushbu {lang} tilidagi va {era} uslubidagi manbani quyidagi mezonlar asosida tahlil qiling:
+        1. PALEOGRAFIK TAVSIF. 2. TRANSLITERATSIYA. 3. SEMANTIK TARJIMA. 4. ILMIY IZOH.
+        """
         for i, img in enumerate(st.session_state['imgs']):
-            with st.status(f"Varaq {i+1} o'qilmoqda...") as status:
+            with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as status:
                 try:
                     response = model.generate_content([prompt, img])
                     new_results.append(response.text)
                     status.update(label=f"Varaq {i+1} tayyor!", state="complete")
-                    time.sleep(5) # RPM Limit (15/min) dan asrash uchun 5 soniya kutish
+                    # RPM (Daqiqalik limit) himoyasi
+                    time.sleep(4) 
                 except Exception as e:
                     new_results.append(f"Xato: {e}")
         st.session_state['academic_results'] = new_results
 
-    # --- 6. TAHLIL, TAHRIR VA CHAT ---
+    # --- 6. TAHLIL, TAHRIR VA SAVOL-JAVOB ---
     if st.session_state['academic_results']:
         st.divider()
-        final_text_out = ""
+        final_doc_text = ""
         for idx, (img, res) in enumerate(zip(st.session_state['imgs'], st.session_state['academic_results'])):
             st.markdown(f"#### 📖 Varaq {idx+1}")
             
             c1, c2 = st.columns([1, 1.2])
-            with c1: st.image(img, width="stretch")
+            with c1: st.image(img, width='stretch')
             with c2: st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            # Tahrirlash oynasi (MATN QORA VA ANIQ)
-            ed_val = st.text_area(f"Varaq {idx+1} tahriri:", value=res, height=400, key=f"ed_{idx}")
-            final_text_out += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
+            ed_val = st.text_area(f"Varaq {idx+1} bo'yicha tahrir:", value=res, height=400, key=f"ed_final_{idx}")
+            final_doc_text += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
-            # Interaktiv Chat
+            # Interaktiv Chat (Har bir sahifa uchun maxfiy key bilan)
             st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
             chat_id = f"chat_{idx}"
             if chat_id not in st.session_state['chat_histories']: st.session_state['chat_histories'][chat_id] = []
 
-            for chat in st.session_state['chat_histories'][chat_id]:
-                st.markdown(f"""<div class='chat-bubble-user'><b>Savol:</b> {chat['q']}</div>""", unsafe_allow_html=True)
-                st.markdown(f"""<div class='chat-bubble-ai'><b>AI:</b> {chat['a']}</div>""", unsafe_allow_html=True)
+            for ch in st.session_state['chat_histories'][chat_id]:
+                st.markdown(f"""<div class='chat-bubble-user'><b>Savol:</b> {ch['q']}</div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class='chat-bubble-ai'><b>AI Javobi:</b> {ch['a']}</div>""", unsafe_allow_html=True)
 
-            user_q = st.text_input("Savol yozing:", key=f"q_in_{idx}")
-            if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
+            user_q = st.text_input("Savol yozing:", key=f"q_input_fixed_{idx}")
+            if st.button(f"So'rash {idx+1}", key=f"btn_fixed_{idx}"):
                 if user_q:
                     try:
-                        # Tejamkor muloqot (faqat matn yuboramiz, token tejash uchun)
+                        # Chat tejamkorligi: faqat matnli tahlilni yuboramiz
                         chat_res = model.generate_content(f"Hujjat tahlili: {ed_val}\nSavol: {user_q}\nAkademik javob ber.")
                         st.session_state['chat_histories'][chat_id].append({"q": user_q, "a": chat_res.text})
                         st.rerun()
@@ -156,9 +158,10 @@ if uploaded_file:
                         st.error("Limit oshdi. 60 soniya kuting.")
             st.markdown("---")
 
-        if final_text_out:
+        if final_doc_text:
             doc = Document()
-            doc.add_paragraph(final_text_out)
+            doc.add_heading('Academic Manuscript Report', 0)
+            doc.add_paragraph(final_doc_text)
             bio = io.BytesIO()
             doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
