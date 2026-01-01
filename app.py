@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
+# --- 2. PROFESSIONAL ANTIK-AKADEMIK DIZAYN ---
 st.markdown("""
     <style>
     #MainMenu, footer, header {visibility: hidden !important;}
@@ -39,6 +39,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Google Search Console Verification
+st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
+
 # --- 3. XAVFSIZLIK VA SECRETS ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -63,22 +66,28 @@ if not st.session_state.authenticated:
                 st.error("Xato kod!")
     st.stop()
 
-# --- 4. AI MODELINI SOZLASH (FIX 404) ---
+# --- 4. AI MODELINI SOZLASH (AQLLI SELEKTOR) ---
 genai.configure(api_key=GEMINI_KEY)
 
 @st.cache_resource
-def load_stable_model():
-    # 404 xatosini oldini olish uchun nomlar ustuvorligi
-    model_names = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-flash-latest"]
-    for name in model_names:
+def load_working_model():
+    # Sizning API kalitingizda aniq ishlaydigan nomlar ro'yxati
+    possible_names = [
+        "gemini-1.5-flash-latest", 
+        "gemini-flash-latest", 
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]
+    for name in possible_names:
         try:
             m = genai.GenerativeModel(name)
+            # Kichik test (model mavjudligini tekshirish)
             return m
         except:
             continue
-    return genai.GenerativeModel("gemini-pro-vision")
+    return genai.GenerativeModel("gemini-pro-vision") # Oxirgi chora
 
-model = load_stable_model()
+model = load_working_model()
 
 # Sidebar
 with st.sidebar:
@@ -100,13 +109,13 @@ if file:
             if file.type == "application/pdf":
                 pdf = pdfium.PdfDocument(file)
                 for i in range(len(pdf)):
-                    imgs.append(pdf[i].render(scale=2.5).to_pil())
+                    imgs.append(pdf[i].render(scale=2.5).to_pil()) # Barqarorlik uchun 2.5
             else:
                 imgs.append(Image.open(file))
             st.session_state.imgs = imgs
             st.session_state.last_fn = file.name
             st.session_state.res = {}
-            st.session_state.chat = {}
+            st.session_state.chat_history = {}
 
     # Prevyu
     cols = st.columns(min(len(st.session_state.imgs), 4))
@@ -114,7 +123,7 @@ if file:
         cols[idx % 4].image(img, caption=f"Varaq {idx+1}", use_container_width=True)
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
-        prompt = f"Siz matnshunos akademiksiz. {lang} va {era} qo'lyozmasini tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
+        prompt = f"Siz matnshunos akademiksiz. {lang} va {era} uslubidagi qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
         for i, img in enumerate(st.session_state.imgs):
             with st.status(f"Varaq {i+1} o'qilmoqda...") as status:
                 try:
@@ -124,7 +133,7 @@ if file:
                 except Exception as e:
                     st.error(f"Xato (Varaq {i+1}): {e}")
 
-    # --- 6. TAHLIL VA INTERAKTIV CHAT ---
+    # --- 6. TAHLIL VA CHAT ---
     if st.session_state.get('res'):
         st.divider()
         doc_content = ""
@@ -143,19 +152,19 @@ if file:
                 # Interaktiv Chat
                 st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
                 cid = f"chat_{idx}"
-                if cid not in st.session_state.chat: st.session_state.chat[cid] = []
+                if cid not in st.session_state.chat_history: st.session_state.chat_history[cid] = []
 
-                for chat in st.session_state.chat[cid]:
+                for chat in st.session_state.chat_history[cid]:
                     st.markdown(f"<div class='user-msg'><b>Savol:</b> {chat['q']}</div>", unsafe_allow_html=True)
                     st.markdown(f"<div class='ai-msg'><b>AI:</b> {chat['a']}</div>", unsafe_allow_html=True)
 
                 q_in = st.text_input("Savol yozing:", key=f"q_in_{idx}")
                 if st.button(f"So'rash {idx+1}", key=f"q_btn_{idx}"):
                     if q_in:
-                        with st.spinner("AI tahlil qilmoqda..."):
-                            c_prompt = f"Ushbu qo'lyozma matni asosida akademik javob bering: {q_in}\nMatn: {edited}"
+                        with st.spinner("AI o'ylamoqda..."):
+                            c_prompt = f"Ushbu qo'lyozma matni yuzasidan akademik javob bering: {q_in}\nMatn: {edited}"
                             c_res = model.generate_content([c_prompt, img])
-                            st.session_state.chat[cid].append({"q": q_in, "a": c_res.text})
+                            st.session_state.chat_history[cid].append({"q": q_in, "a": c_res.text})
                             st.rerun()
                 st.divider()
 
