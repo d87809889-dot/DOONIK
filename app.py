@@ -38,7 +38,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan!")
+    st.error("Secrets sozlanmagan! Streamlit Settings > Secrets bo'limini tekshiring.")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -54,9 +54,8 @@ if not st.session_state["authenticated"]:
                 st.error("Xato!")
     st.stop()
 
-# --- 4. AI MODELI (LOGSDA TASDIQLANGAN NOM) ---
+# --- 4. AI MODELI ---
 genai.configure(api_key=GEMINI_KEY)
-# Logsda ko'ringan eng barqaror nom:
 model = genai.GenerativeModel('gemini-flash-latest')
 
 # Sidebar
@@ -72,9 +71,10 @@ with st.sidebar:
 st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertiza Markazi</h1>", unsafe_allow_html=True)
 uploaded_file = st.file_uploader("Manbani yuklang", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
+# SESSION STATE ELEMENTLARINI TO'G'RI INIZIALIZATSIYA QILISH (KeyError oldini oladi)
 if 'imgs' not in st.session_state: st.session_state['imgs'] = []
 if 'academic_results' not in st.session_state: st.session_state['academic_results'] = []
-if 'chat_histories' not in st.session_state: st.session_state['chat_histories'] = {}
+if 'chat_history' not in st.session_state: st.session_state['chat_history'] = {}
 
 if uploaded_file:
     if st.session_state.get('last_fn') != uploaded_file.name:
@@ -89,10 +89,10 @@ if uploaded_file:
             st.session_state['imgs'] = imgs
             st.session_state['last_fn'] = uploaded_file.name
             st.session_state['academic_results'] = []
+            st.session_state['chat_history'] = {}
 
     cols = st.columns(min(len(st.session_state['imgs']), 4))
     for idx, img in enumerate(st.session_state['imgs']):
-        # XATOLIK TUZATILDI: width="stretch" ishlatamiz
         cols[idx % 4].image(img, caption=f"Varaq {idx+1}", width="stretch")
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
@@ -107,35 +107,34 @@ if uploaded_file:
                     new_results.append(f"Xato: {e}")
         st.session_state['academic_results'] = new_results
 
-    # --- 6. TAHLIL VA CHAT ---
+    # --- 6. TAHLIL VA CHAT (NOMLAR TUZATILDI) ---
     if st.session_state['academic_results']:
         st.divider()
         final_text = ""
         for idx, (img, res) in enumerate(zip(st.session_state['imgs'], st.session_state['academic_results'])):
             st.markdown(f"#### 📖 Varaq {idx+1}")
             c1, c2 = st.columns([1, 1.2])
-            with c1: 
-                # XATOLIK TUZATILDI: width="stretch"
-                st.image(img, width="stretch")
-            with c2: 
-                st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
+            with c1: st.image(img, width="stretch")
+            with c2: st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            ed_val = st.text_area(f"Tahrir {idx+1}:", value=res, height=400, key=f"ed_{idx}")
+            ed_val = st.text_area(f"Varaq {idx+1} bo'yicha tahrir:", value=res, height=400, key=f"ed_{idx}")
             final_text += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
-            # Interaktiv Chat
+            # Interaktiv Chat (KeyError muammosi bu yerda yechildi)
             st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
-            chat_id = f"chat_{idx}"
-            if chat_id not in st.session_state['chat_history']: st.session_state['chat_history'][chat_id] = []
+            chat_id = f"chat_page_{idx}"
+            if chat_id not in st.session_state['chat_history']:
+                st.session_state['chat_history'][chat_id] = []
 
+            # Chat tarixini chiqarish
             for chat in st.session_state['chat_history'][chat_id]:
                 st.markdown(f"<div class='chat-bubble-user'><b>Savol:</b> {chat['q']}</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='chat-bubble-ai'><b>AI:</b> {chat['a']}</div>", unsafe_allow_html=True)
 
-            user_q = st.text_input(f"Savol yozing ({idx+1}):", key=f"q_in_{idx}")
+            user_q = st.text_input("Savol yozing:", key=f"q_in_{idx}")
             if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                 if user_q:
-                    chat_res = model.generate_content([f"Ushbu qo'lyozma bo'yicha javob ber: {user_q}\nMatn: {ed_val}", img])
+                    chat_res = model.generate_content([f"Ushbu qo'lyozma bo'yicha savolga akademik javob ber: {user_q}\nMatn: {ed_val}", img])
                     st.session_state['chat_history'][chat_id].append({"q": user_q, "a": chat_res.text})
                     st.rerun()
             st.markdown("---")
@@ -146,4 +145,3 @@ if uploaded_file:
             bio = io.BytesIO()
             doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
-
