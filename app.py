@@ -9,13 +9,13 @@ import time
 
 # 1. SEO VA AKADEMIK MUHIT SOZLAMALARI
 st.set_page_config(
-    page_title="Manuscript AI - Professional Master v10.0", 
+    page_title="Manuscript AI - Professional Master v11.0", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESSIONAL ANTIK-AKADEMIK DIZAYN (CSS) ---
+# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
     #MainMenu, footer, header {visibility: hidden !important;}
@@ -23,17 +23,14 @@ st.markdown("""
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
     .result-box { background-color: #ffffff; padding: 25px; border-radius: 12px; border-left: 10px solid #c5a059; box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important; color: #1a1a1a !important; font-size: 17px; }
     .stTextArea textarea { background-color: #fdfaf1 !important; color: #000000 !important; border: 2px solid #c5a059 !important; font-family: 'Courier New', monospace !important; font-size: 18px !important; }
-    .chat-bubble-user { background-color: #e2e8f0; color: #000000 !important; padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #1e3a8a; }
-    .chat-bubble-ai { background-color: #ffffff; color: #1a1a1a !important; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #d4af37; }
+    .chat-bubble-user { background-color: #e2e8f0; color: #000000 !important; padding: 12px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #1e3a8a; }
+    .chat-bubble-ai { background-color: #ffffff; color: #1a1a1a !important; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #d4af37; }
     section[data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
     .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%); color: #c5a059 !important; font-weight: bold; width: 100%; padding: 12px; border: 1px solid #c5a059; }
     </style>
 """, unsafe_allow_html=True)
 
-# Google Search Console Verification
-st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
-
-# --- 3. XAVFSIZLIK VA KIRISH ---
+# --- 3. XAVFSIZLIK ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -41,14 +38,14 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Settings > Secrets qismini tekshiring.")
+    st.error("Secrets sozlanmagan!")
     st.stop()
 
 if not st.session_state["authenticated"]:
     _, col_mid, _ = st.columns([1, 1.5, 1])
     with col_mid:
         st.markdown("<br><br><h2>🏛 AKADEMIK EKSPERTIZA</h2>", unsafe_allow_html=True)
-        pwd_input = st.text_input("Maxfiy kod", type="password")
+        pwd_input = st.text_input("Maxfiy parol", type="password")
         if st.button("TIZIMGA KIRISH"):
             if pwd_input == CORRECT_PASSWORD:
                 st.session_state["authenticated"] = True
@@ -57,19 +54,21 @@ if not st.session_state["authenticated"]:
                 st.error("Xato kod!")
     st.stop()
 
-# --- 4. MODELNI TANLASH (STRATEGIK: 2.5 EMAS, 2.0 YOKI 1.5) ---
+# --- 4. AQLLI MODEL TANLASH (BARQARORLIK VA LIMIT HIMOYASI) ---
 genai.configure(api_key=GEMINI_KEY)
 
-# 20 ta limitli Gemini 2.5 dan qochamiz va 1500 ta limitli 2.0 yoki 1.5 ni tanlaymiz
-def load_workhorse_model():
-    # models/gemini-2.0-flash yoki gemini-1.5-flash-002 eng yaxshi tanlov
-    # Sizning ro'yxatingizda gemini-2.0-flash bor edi
-    try:
-        return genai.GenerativeModel('models/gemini-2.0-flash')
-    except:
-        return genai.GenerativeModel('models/gemini-1.5-flash')
+def get_stable_model():
+    """Gemini 2.0 dan (limit: 0) qochib, Gemini 1.5 Flash-ga (limit: 1500) ulanadi"""
+    # Eng barqaror model nomlari tartibi
+    stable_names = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro-vision"]
+    for name in stable_names:
+        try:
+            return genai.GenerativeModel(name)
+        except:
+            continue
+    return genai.GenerativeModel("gemini-1.5-flash") # Oxirgi chora
 
-model = load_workhorse_model()
+model = get_stable_model()
 
 # Sidebar
 with st.sidebar:
@@ -77,7 +76,7 @@ with st.sidebar:
     lang = st.selectbox("Asl til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
     era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     st.markdown("---")
-    st.caption("🚀 Model: High-Quota Stable (1500 RPD)")
+    st.caption("✅ Stabil Rejim: 1.5 Flash (1500 RPD)")
     if st.button("🚪 CHIQISH"):
         st.session_state["authenticated"] = False
         st.rerun()
@@ -116,21 +115,24 @@ if uploaded_file:
         new_results = []
         prompt = f"""
         Siz qadimgi matnshunos va paleograf bo'yicha dunyo darajasidagi akademiksiz. 
-        Ushbu {lang} tilidagi va {era} uslubidagi manbani tahlil qiling:
-        1. PALEOGRAFIK TAVSIF. 2. TRANSLITERATSIYA. 3. SEMANTIK TARJIMA. 4. ILMIY IZOH.
+        Ushbu {lang} tilidagi va {era} uslubidagi manbani professional tahlil qiling:
+        1. PALEOGRAFIK TAVSIF. 2. DIPLOMATIK TRANSLITERATSIYA. 3. SEMANTIK TARJIMA. 4. ILMIY IZOH.
         """
         for i, img in enumerate(st.session_state['imgs']):
-            with st.status(f"Varaq {i+1} o'qilmoqda...") as status:
+            with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as status:
                 try:
                     response = model.generate_content([prompt, img])
                     new_results.append(response.text)
                     status.update(label=f"Varaq {i+1} tayyor!", state="complete")
-                    time.sleep(3) # RPM limitidan asrash uchun 3 soniya kutish
+                    time.sleep(5) # RPM limitidan (1 daqiqaga 15 so'rov) asrash uchun 5 soniya kutish
                 except Exception as e:
-                    new_results.append(f"Xato: {e}")
+                    if "429" in str(e):
+                        new_results.append("⚠️ Google API limiti vaqtincha to'ldi. Iltimos 60 soniya kuting.")
+                    else:
+                        new_results.append(f"Xato: {e}")
         st.session_state['academic_results'] = new_results
 
-    # --- 6. TAHLIL, TAHRIR VA INTERAKTIV CHAT ---
+    # --- 6. TAHLIL, TAHRIR VA CHAT ---
     if st.session_state['academic_results']:
         st.divider()
         final_text_doc = ""
@@ -153,12 +155,12 @@ if uploaded_file:
                 st.markdown(f"""<div class='chat-bubble-user'><b>Savol:</b> {chat['q']}</div>""", unsafe_allow_html=True)
                 st.markdown(f"""<div class='chat-bubble-ai'><b>AI:</b> {chat['a']}</div>""", unsafe_allow_html=True)
 
-            user_q = st.text_input("Savol yozing:", key=f"q_in_{idx}")
+            user_q = st.text_input("Savol bering:", key=f"q_in_{idx}")
             if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                 if user_q:
                     try:
-                        # Chatda rasm yuborish o'rniga matn yuboramiz (Tejamkorlik!)
-                        chat_res = model.generate_content(f"Hujjat matni: {ed_val}\nSavol: {user_q}\nAkademik javob ber.")
+                        # Chatda rasm yubormaymiz (Token tejash!)
+                        chat_res = model.generate_content(f"Hujjat: {ed_val}\nSavol: {user_q}\nAkademik javob ber.")
                         st.session_state['chat_histories'][chat_id].append({"q": user_q, "a": chat_res.text})
                         st.rerun()
                     except Exception as e:
