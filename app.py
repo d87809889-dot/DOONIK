@@ -30,7 +30,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. XAVFSIZLIK VA KIRISH ---
+# --- 3. XAVFSIZLIK ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -38,7 +38,7 @@ try:
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    st.error("Secrets sozlanmagan! Settings > Secrets qismini tekshiring.")
+    st.error("Secrets sozlanmagan!")
     st.stop()
 
 if not st.session_state["authenticated"]:
@@ -54,22 +54,10 @@ if not st.session_state["authenticated"]:
                 st.error("Xato!")
     st.stop()
 
-# --- 4. MODELNI TO'G'RI TANLASH (LOGS ASOSIDA) ---
+# --- 4. AI MODELI (LOGSDA TASDIQLANGAN NOM) ---
 genai.configure(api_key=GEMINI_KEY)
-
-@st.cache_resource
-def load_verified_model():
-    """Logsda ko'ringan ishchi modellardan birini tanlaydi"""
-    # Sizning ro'yxatingizdagi ishlaydigan nomlar
-    working_models = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-pro-latest"]
-    for name in working_models:
-        try:
-            return genai.GenerativeModel(name)
-        except:
-            continue
-    return genai.GenerativeModel("gemini-1.5-flash") # Oxirgi chora
-
-model = load_verified_model()
+# Logsda ko'ringan eng barqaror nom:
+model = genai.GenerativeModel('gemini-flash-latest')
 
 # Sidebar
 with st.sidebar:
@@ -82,7 +70,7 @@ with st.sidebar:
 
 # --- 5. ASOSIY INTERFEYS ---
 st.markdown("<h1>Raqamli Qo'lyozmalar Ekspertiza Markazi</h1>", unsafe_allow_html=True)
-uploaded_file = st.file_uploader("Ilmiy manbani yuklang", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
+uploaded_file = st.file_uploader("Manbani yuklang", type=['png', 'jpg', 'jpeg', 'pdf'], label_visibility="collapsed")
 
 if 'imgs' not in st.session_state: st.session_state['imgs'] = []
 if 'academic_results' not in st.session_state: st.session_state['academic_results'] = []
@@ -90,29 +78,26 @@ if 'chat_histories' not in st.session_state: st.session_state['chat_histories'] 
 
 if uploaded_file:
     if st.session_state.get('last_fn') != uploaded_file.name:
-        imgs = []
-        if uploaded_file.type == "application/pdf":
-            pdf = pdfium.PdfDocument(uploaded_file)
-            for i in range(len(pdf)):
-                imgs.append(pdf[i].render(scale=3).to_pil())
-        else:
-            imgs.append(Image.open(uploaded_file))
-        st.session_state['imgs'] = imgs
-        st.session_state['last_fn'] = uploaded_file.name
-        st.session_state['academic_results'] = []
-        st.session_state['chat_histories'] = {}
+        with st.spinner('Raqamlashtirilmoqda...'):
+            imgs = []
+            if uploaded_file.type == "application/pdf":
+                pdf = pdfium.PdfDocument(uploaded_file)
+                for i in range(len(pdf)):
+                    imgs.append(pdf[i].render(scale=3).to_pil())
+            else:
+                imgs.append(Image.open(uploaded_file))
+            st.session_state['imgs'] = imgs
+            st.session_state['last_fn'] = uploaded_file.name
+            st.session_state['academic_results'] = []
 
     cols = st.columns(min(len(st.session_state['imgs']), 4))
     for idx, img in enumerate(st.session_state['imgs']):
-        # Ogohlantirishni yo'qotish uchun width='stretch' ishlatamiz
-        cols[idx % 4].image(img, caption=f"Varaq {idx+1}", width=None)
+        # XATOLIK TUZATILDI: width="stretch" ishlatamiz
+        cols[idx % 4].image(img, caption=f"Varaq {idx+1}", width="stretch")
 
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
         new_results = []
-        prompt = f"""
-        Siz qadimiy matnshunos akademiksiz. {lang} va {era} uslubidagi qo'lyozmani tahlil qiling: 
-        1.Paleografiya. 2.Transliteratsiya (lotin). 3.Ma'noviy tarjima. 4.Ilmiy izoh.
-        """
+        prompt = f"Siz matnshunos akademiksiz. {lang} va {era} uslubidagi qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
         for i, img in enumerate(st.session_state['imgs']):
             with st.status(f"Varaq {i+1} o'qilmoqda..."):
                 try:
@@ -129,26 +114,28 @@ if uploaded_file:
         for idx, (img, res) in enumerate(zip(st.session_state['imgs'], st.session_state['academic_results'])):
             st.markdown(f"#### 📖 Varaq {idx+1}")
             c1, c2 = st.columns([1, 1.2])
-            with c1: st.image(img, width=None)
-            with c2: st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
+            with c1: 
+                # XATOLIK TUZATILDI: width="stretch"
+                st.image(img, width="stretch")
+            with c2: 
+                st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
             
-            ed_val = st.text_area(f"Varaq {idx+1} bo'yicha tahrir:", value=res, height=400, key=f"ed_{idx}")
+            ed_val = st.text_area(f"Tahrir {idx+1}:", value=res, height=400, key=f"ed_{idx}")
             final_text += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
             # Interaktiv Chat
             st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
             chat_id = f"chat_{idx}"
-            if chat_id not in st.session_state['chat_histories']: st.session_state['chat_histories'][chat_id] = []
+            if chat_id not in st.session_state['chat_history']: st.session_state['chat_history'][chat_id] = []
 
-            for chat in st.session_state['chat_histories'][chat_id]:
+            for chat in st.session_state['chat_history'][chat_id]:
                 st.markdown(f"<div class='chat-bubble-user'><b>Savol:</b> {chat['q']}</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='chat-bubble-ai'><b>AI:</b> {chat['a']}</div>", unsafe_allow_html=True)
 
             user_q = st.text_input(f"Savol yozing ({idx+1}):", key=f"q_in_{idx}")
             if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                 if user_q:
-                    chat_prompt = f"Ushbu qo'lyozma bo'yicha savolga akademik javob ber: {user_q}\nMatn: {ed_val}"
-                    chat_res = model.generate_content([chat_prompt, img])
+                    chat_res = model.generate_content([f"Ushbu qo'lyozma bo'yicha javob ber: {user_q}\nMatn: {ed_val}", img])
                     st.session_state['chat_history'][chat_id].append({"q": user_q, "a": chat_res.text})
                     st.rerun()
             st.markdown("---")
@@ -159,4 +146,3 @@ if uploaded_file:
             bio = io.BytesIO()
             doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
-
