@@ -265,3 +265,4 @@ if uploaded_file:
 
 # 🧹 Xotirani tozalash
 gc.collect()
+
