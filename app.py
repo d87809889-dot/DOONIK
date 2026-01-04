@@ -177,3 +177,4 @@ if uploaded_file:
             doc.add_paragraph(final_doc_text)
             bio = io.BytesIO(); doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "report.docx")
+
