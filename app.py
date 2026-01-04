@@ -191,3 +191,4 @@ if st.session_state.results:
         doc.add_paragraph(final_report)
         bio = io.BytesIO(); doc.save(bio)
         st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
+
