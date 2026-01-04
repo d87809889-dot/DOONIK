@@ -58,38 +58,34 @@ def get_file_hash(content: bytes) -> str:
     return hashlib.md5(content).hexdigest()
 
 def image_to_base64(img: Image.Image) -> str:
-    """Gemini API uchun rasmni to'g'ri base64 formatiga o'tkazish"""
     buffered = io.BytesIO()
     img.save(buffered, format="JPEG", quality=85)
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 @st.cache_data(show_spinner=False)
 def render_page_optimized(file_content: bytes, page_idx: int, scale: float) -> Image.Image:
-    """Xotira uchun optimallashgan sahifa renderlash"""
     try:
         pdf = pdfium.PdfDocument(file_content)
         page = pdf[page_idx]
         bitmap = page.render(scale=scale)
         img = bitmap.to_pil()
         pdf.close()
-        gc.collect() # RAMni darhol bo'shatish
+        gc.collect()
         return img
     except Exception as e:
-        st.error(f"Sahifani render qilishda xatolik (Bet {page_idx+1}): {e}")
+        st.error(f"Sahifani render qilishda xatolik: {e}")
         return None
 
 # --- 5. REAL-TIME KREDIT LOGIKASI ---
 
 def fetch_live_credits(user_id: str):
-    """Bazadan joriy kreditni snapshotlarsiz olish"""
     try:
         res = db.table("profiles").select("credits").eq("id", user_id).single().execute()
         return res.data["credits"] if res.data else 0
-    except Exception as e:
+    except Exception:
         return 0
 
 def use_credit_atomic(user_id: str):
-    """Kreditni xavfsiz ayirish"""
     current = fetch_live_credits(user_id)
     if current > 0:
         db.table("profiles").update({"credits": current - 1}).eq("id", user_id).execute()
@@ -99,17 +95,14 @@ def use_credit_atomic(user_id: str):
 # --- 6. NON-BLOCKING ASYNC AI LOGIC ---
 
 async def call_ai_async(prompt: str, img: Image.Image):
-    """UI'ni bloklamagan holda AI so'rovi"""
     try:
-        # Base64 payload yaratish
         img_payload = {"mime_type": "image/jpeg", "data": image_to_base64(img)}
-        # Gemini blocking so'rovni threadpool'da bajarish
         response = await asyncio.to_thread(model.generate_content, [prompt, img_payload])
         return response.text
     except Exception as e:
         return f"AI Tahlil xatosi: {str(e)}"
 
-# --- 7. WORD EXPORT (UNIQUE FILENAME) ---
+# --- 7. WORD EXPORT ---
 
 def create_word_report(analysis_text, chat_history):
     doc = Document()
@@ -131,23 +124,28 @@ def create_word_report(analysis_text, chat_history):
 # --- 8. ASOSIY ILOVA LOGIKASI ---
 
 def main():
-    # 🔐 AUTH CHECK
-    if "user" not in st.session_state:
-        st.session_state.user = None
-    
-    try:
-        user_res = db.auth.get_user()
-        st.session_state.user = user_res.user if user_res else None
-    except: pass
+    # 🔐 PAROL BILAN KIRISH TIZIMI
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
 
-    if not st.session_state.user:
+    if not st.session_state.authenticated:
         _, col_mid, _ = st.columns([1, 1.5, 1])
         with col_mid:
-            st.markdown("<br><br><h2>🏛 Manuscript AI Login</h2>", unsafe_allow_html=True)
-            st.info("Davom etish uchun Google hisobingiz bilan kiring.")
-            if st.button("🌐 Google orqali kirish", use_container_width=True):
-                res = db.auth.sign_in_with_oauth({"provider": "google", "options": {"redirect_to": st.secrets["REDIRECT_URL"]}})
-                st.markdown(f'<meta http-equiv="refresh" content="0;url={res.url}">', unsafe_allow_html=True)
+            st.markdown("<br><br><h2 style='text-align:center;'>🏛 Manuscript AI Kirish</h2>", unsafe_allow_html=True)
+            st.info("Ilovadan foydalanish uchun maxfiy parolni kiriting.")
+            
+            password = st.text_input("Parol:", type="password")
+            if st.button("Kirish", use_container_width=True):
+                if password == "tarix-2026":
+                    st.session_state.authenticated = True
+                    # Sizning Supabase UID va Emailingiz
+                    class MockUser:
+                        id = "72b7208c-6da2-449f-a8dd-a61c7a25a42e"
+                        email = "d87809889@gmail.com"
+                    st.session_state.user = MockUser()
+                    st.rerun()
+                else:
+                    st.error("Parol noto'g'ri!")
         return
 
     # 📊 SESSION STATE INIT
@@ -164,7 +162,7 @@ def main():
         lang = st.selectbox("Asl til:", ["Chig'atoy", "Forscha", "Arabcha", "Usmonli Turk"])
         style = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Kufiy", "Riq'a", "Noma'lum"])
         if st.button("🚪 Chiqish"):
-            db.auth.sign_out()
+            st.session_state.authenticated = False
             st.session_state.clear()
             st.rerun()
 
@@ -175,7 +173,6 @@ def main():
         file_bytes = file.getvalue()
         file_id = get_file_hash(file_bytes)
         
-        # 📑 SAHIFA NAVIGATSIYASI
         if file.type == "application/pdf":
             try:
                 pdf_doc = pdfium.PdfDocument(file_bytes)
@@ -193,8 +190,6 @@ def main():
         st.session_state.chat_store.setdefault(state_key, [])
 
         col_img, col_info = st.columns([1, 1.2])
-        
-        # --- UI RENDER (Low Scale for Memory) ---
         img_ui = render_page_optimized(file_bytes, selected_page, scale=1.5)
 
         if img_ui:
@@ -203,7 +198,6 @@ def main():
                 zoom = st.slider("Kattalashtirish:", 1.0, 3.0, 1.2)
                 st.image(img_ui, width=int(zoom * 550))
                 
-                # WORD EXPORT (Unique ID)
                 if st.session_state.ai_store.get(state_key):
                     unique_name = f"Report_{state_key}_{datetime.now().strftime('%H%M%S')}.docx"
                     word_data = create_word_report(st.session_state.ai_store[state_key], st.session_state.chat_store[state_key])
@@ -216,11 +210,8 @@ def main():
                     if st.button("✨ Tahlilni boshlash"):
                         if fetch_live_credits(user_id) > 0:
                             with st.spinner("AI tahlil qilmoqda..."):
-                                # AI tahlili uchun yuqori sifatli rasm renderlash (Scale 3.0)
                                 img_ai = render_page_optimized(file_bytes, selected_page, scale=3.0)
                                 prompt = f"Siz matnshunos akademiksiz. {lang} va {style} uslubidagi manbani tahlil qiling: 1.Transliteratsiya 2.Tarjima 3.Izoh."
-                                
-                                # Asinxron chaqiruv
                                 result = asyncio.run(call_ai_async(prompt, img_ai))
                                 st.session_state.ai_store[state_key] = result
                                 use_credit_atomic(user_id)
@@ -229,18 +220,16 @@ def main():
                             st.error("Kreditlar tugagan. Iltimos, balansni to'ldiring.")
 
                     if st.session_state.ai_store.get(state_key):
-                        # Scrollable result box
-                        st.markdown(f"<div class='result-box'>{st.session_state.ai_results[state_key] if 'ai_results' in st.session_state else st.session_state.ai_store[state_key]}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='result-box'>{st.session_state.ai_store[state_key]}</div>", unsafe_allow_html=True)
                         edited = st.text_area("AI natijasini tahrirlash:", value=st.session_state.ai_store[state_key], height=300, key=f"edit_{state_key}")
                         st.session_state.ai_store[state_key] = edited
 
                 with tab_chat:
-                    # Chat container with fixed height and auto-scroll
                     chat_container = st.container(height=450)
                     for msg in st.session_state.chat_store[state_key]:
                         chat_container.chat_message(msg["role"]).write(msg["content"])
 
-                    if user_q := st.chat_input("Ushbu sahifa bo'yicha savol bering...", key=f"in_{state_key}"):
+                    if user_q := st.chat_input("Savol bering...", key=f"in_{state_key}"):
                         if fetch_live_credits(user_id) > 0:
                             st.session_state.chat_store[state_key].append({"role": "user", "content": user_q})
                             chat_container.chat_message("user").write(user_q)
@@ -248,20 +237,17 @@ def main():
                             with st.spinner("AI o'ylanmoqda..."):
                                 context = st.session_state.ai_store.get(state_key, "")
                                 chat_prompt = f"Matn tahlili: {context}\nSavol: {user_q}"
-                                # Chat uchun tejamkor rasm
                                 img_chat = render_page_optimized(file_bytes, selected_page, scale=1.5)
                                 response = asyncio.run(call_ai_async(chat_prompt, img_chat))
                                 
                                 st.session_state.chat_store[state_key].append({"role": "assistant", "content": response})
                                 chat_container.chat_message("assistant").write(response)
                                 use_credit_atomic(user_id)
-                                st.rerun() # Kredit ko'rsatkichini yangilash uchun
+                                st.rerun()
                         else:
                             st.error("Kredit yetarli emas.")
 
-    # 🧹 Garbage Collection
     gc.collect()
 
 if __name__ == "__main__":
     main()
-
