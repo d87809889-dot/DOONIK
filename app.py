@@ -1,28 +1,32 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+from supabase import create_client, Client
 import pypdfium2 as pdfium
+from PIL import Image
 import io
 import gc
 import asyncio
 import base64
 import hashlib
+import logging
 import time
 from datetime import datetime
 from docx import Document
 
-# --- 1. KONFIGURATSIYA VA DIZAYN ---
+# --- 1. KONFIGURATSIYA VA LOGGING ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 st.set_page_config(
-    page_title="Manuscript AI - Academic Pro",
+    page_title="Manuscript AI - Enterprise Academic",
     page_icon="📜",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Antik-akademik dizayn (CSS)
+# --- 2. ANTIK AKADEMIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
-    #MainMenu, footer, header {visibility: hidden !important;}
     .main { background-color: #f4ecd8 !important; color: #1a1a1a !important; font-family: 'Times New Roman', serif; }
     h1, h2, h3 { color: #0c1421 !important; text-align: center; border-bottom: 2px solid #c5a059; padding-bottom: 10px; }
     .result-box { 
@@ -30,59 +34,59 @@ st.markdown("""
         border-left: 10px solid #c5a059; box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         color: #1a1a1a; line-height: 1.7; font-size: 18px;
     }
-    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000 !important; border: 1px solid #c5a059 !important; }
+    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000 !important; border: 2px solid #c5a059 !important; font-size: 16px; }
     .chat-bubble-user { background-color: #e2e8f0; color: black; padding: 12px; border-radius: 10px; margin: 5px 0; border-left: 5px solid #1e3a8a; }
     .chat-bubble-ai { background-color: #ffffff; color: black; padding: 12px; border-radius: 10px; margin: 5px 0; border: 1px solid #d4af37; }
-    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important; color: #c5a059 !important; font-weight: bold; border: none; padding: 12px; }
+    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important; color: #c5a059 !important; font-weight: bold; border: none; }
     [data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. XAVFSIZLIK (FAQAT PAROL BILAN) ---
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-
-try:
-    # Faqat ikkita asosiy sir kerak
-    CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
-    GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
-except:
-    st.error("Secrets sozlanmagan! Streamlit Settings -> Secrets qismini tekshiring.")
-    st.stop()
-
-# Tizimga kirish oynasi (Oldingidek)
-if not st.session_state["authenticated"]:
-    _, col_mid, _ = st.columns([1, 1.5, 1])
-    with col_mid:
-        st.markdown("<br><br><h2>🔐 Manuscript AI: Kirish</h2>", unsafe_allow_html=True)
-        pwd_input = st.text_input("Maxfiy parolni kiriting", type="password")
-        if st.button("Tizimga kirish"):
-            if pwd_input == CORRECT_PASSWORD:
-                st.session_state["authenticated"] = True
-                st.rerun()
-            else:
-                st.error("Xato parol kiritildi!")
-    st.stop()
-
-# --- 3. AI MODELINI SOZLASH (404 XATOSINI YO'QOTISH) ---
-genai.configure(api_key=GEMINI_KEY)
+# --- 3. CORE SERVICES ---
 
 @st.cache_resource
-def get_working_model():
-    """Googledan hozirgi ishlayotgan modelni so'rab, ulaydi"""
-    try:
-        # Ruxsat etilgan modellarni olish
-        available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Eng barqaror nomlarni qidirish
-        targets = ['models/gemini-1.5-flash', 'models/gemini-1.5-flash-latest', 'models/gemini-pro']
-        for t in targets:
-            if t in available:
-                return genai.GenerativeModel(model_name=t)
-        return genai.GenerativeModel(model_name=available[0])
-    except:
-        return genai.GenerativeModel(model_name='models/gemini-1.5-flash')
+def get_db() -> Client:
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-model = get_working_model()
+db = get_db()
+
+@st.cache_resource
+def init_gemini():
+    """404 XATOSINI YO'QOTUVCHI AVTOMATIK QIDIRUV TIZIMI"""
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        
+        # 1. Google'dan mavjud modellarni so'raymiz
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # 2. Eng barqaror modellarni tartib bilan tekshiramiz
+        # 'models/gemini-1.5-flash' bu v1 (stable) yo'lagi uchun eng ma'quli
+        priority_list = [
+            'models/gemini-1.5-flash',
+            'models/gemini-1.5-flash-latest',
+            'models/gemini-1.5-pro',
+            'models/gemini-pro-vision'
+        ]
+        
+        chosen_model = None
+        for target in priority_list:
+            if target in available_models:
+                chosen_model = target
+                break
+        
+        if not chosen_model:
+            chosen_model = available_models[0] if available_models else 'models/gemini-1.5-flash'
+            
+        logger.info(f"Tizim tanlagan model: {chosen_model}")
+        return genai.GenerativeModel(model_name=chosen_model)
+    except Exception as e:
+        st.error(f"AI tizimini ulashda xatolik: {e}")
+        return None
+
+ai_model = init_gemini()
 
 # --- 4. YORDAMCHI FUNKSIYALAR ---
 
@@ -102,96 +106,178 @@ def render_page_optimized(file_content: bytes, page_idx: int, scale: float, is_p
             return img
         else:
             return Image.open(io.BytesIO(file_content))
-    except: return None
+    except Exception as e:
+        logger.error(f"Render xatosi: {e}")
+        return None
 
 def img_to_payload(img: Image.Image):
     buffered = io.BytesIO()
     img.save(buffered, format="JPEG", quality=85)
     return {"mime_type": "image/jpeg", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
+# --- 5. REAL-TIME KREDIT NAZORATI ---
+
+def fetch_live_credits(user_id: str):
+    try:
+        res = db.table("profiles").select("credits").eq("id", user_id).single().execute()
+        return res.data["credits"] if res.data else 0
+    except: return 0
+
+def use_credit_atomic(user_id: str):
+    current = fetch_live_credits(user_id)
+    if current > 0:
+        db.table("profiles").update({"credits": current - 1}).eq("id", user_id).execute()
+        return True
+    return False
+
+# --- 6. ASYNC AI LOGIC ---
+
 async def call_ai_async(prompt: str, img: Image.Image):
-    """Asinxron AI chaqiruvi"""
     try:
         payload = img_to_payload(img)
-        response = await asyncio.to_thread(model.generate_content, [prompt, payload])
+        # 404 xatosidan qochish uchun thread-pool orqali chaqiramiz
+        response = await asyncio.to_thread(ai_model.generate_content, [prompt, payload])
         return response.text
     except Exception as e:
         return f"🚨 AI Xatosi: {str(e)}"
 
-# --- 5. ASOSIY INTERFEYS ---
+# --- 7. EXPORT ---
 
-with st.sidebar:
-    st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
-    lang = st.selectbox("Asl til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
-    style = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
-    st.divider()
-    if st.button("🚪 Tizimdan chiqish"):
-        st.session_state["authenticated"] = False
-        st.rerun()
+def create_report(analysis, chat_history):
+    doc = Document()
+    doc.add_heading('Manuscript AI: Akademik Hisobot', 0)
+    doc.add_heading('Ekspertiza Xulosasi', level=1)
+    doc.add_paragraph(analysis)
+    if chat_history:
+        doc.add_heading('Ilmiy Muloqot Tarixi', level=1)
+        for msg in chat_history:
+            doc.add_paragraph(f"{msg['role'].upper()}: {msg['content']}")
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
 
-st.title("📜 Qo'lyozmalar Ekspertiza Markazi")
-uploaded_file = st.file_uploader("Faylni yuklang (PDF, JPG, PNG)", type=['pdf', 'png', 'jpg', 'jpeg'], label_visibility="collapsed")
+# --- 8. ASOSIY ILOVA ---
 
-if 'res_store' not in st.session_state: st.session_state.res_store = {}
-if 'chat_store' not in st.session_state: st.session_state.chat_store = {}
+def main():
+    # --- 🔐 AUTH FLOW ---
+    if "user" not in st.session_state:
+        st.session_state.user = None
 
-if uploaded_file:
-    file_bytes = uploaded_file.getvalue()
-    file_id = get_file_hash(file_bytes)
-    is_pdf = uploaded_file.type == "application/pdf"
-    
-    if is_pdf:
-        pdf_m = pdfium.PdfDocument(file_bytes)
-        t_pages = len(pdf_m)
-        pdf_m.close()
-        col_p, col_z = st.columns(2)
-        p_idx = col_p.number_input(f"Sahifa (1-{t_pages}):", 1, t_pages) - 1
-        z_val = col_z.slider("Zoom:", 1.0, 4.0, 2.5)
-    else:
-        p_idx = 0
-        z_val = st.slider("Zoom:", 1.0, 3.0, 1.5)
+    try:
+        user_res = db.auth.get_user()
+        st.session_state.user = user_res.user if user_res else None
+    except: pass
 
-    state_key = f"{file_id}_{p_idx}"
-    st.session_state.chat_store.setdefault(state_key, [])
+    if not st.session_state.user:
+        _, col_mid, _ = st.columns([1, 1.5, 1])
+        with col_mid:
+            st.markdown("<br><br><h2>🏛 Manuscript AI Login</h2>", unsafe_allow_html=True)
+            st.info("Akademik tizimga kirish uchun Google hisobingizdan foydalaning.")
+            if st.button("🌐 Google orqali kirish", use_container_width=True):
+                res = db.auth.sign_in_with_oauth({
+                    "provider": "google", 
+                    "options": {"redirect_to": st.secrets["REDIRECT_URL"]}
+                })
+                st.markdown(f'<meta http-equiv="refresh" content="0;url={res.url}">', unsafe_allow_html=True)
+        return
 
-    col_img, col_info = st.columns([1, 1.2])
-    img = render_page_optimized(file_bytes, p_idx, z_val, is_pdf)
+    # --- INITIALIZE STATE ---
+    user_id = st.session_state.user.id
+    st.session_state.setdefault("ai_results", {})
+    st.session_state.setdefault("chats", {})
 
-    if img:
-        with col_img:
-            st.image(img, use_container_width=True, caption=f"Varaq: {p_idx + 1}")
-            if state_key in st.session_state.res_store:
-                doc = Document()
-                doc.add_paragraph(st.session_state.res_store[state_key])
-                bio = io.BytesIO(); doc.save(bio)
-                st.download_button("📥 Wordda yuklash", bio.getvalue(), f"tahlil_{state_key}.docx")
+    # --- SIDEBAR ---
+    live_credits = fetch_live_credits(user_id)
+    with st.sidebar:
+        st.markdown(f"👤 **{st.session_state.user.email}**")
+        st.metric("💳 Qolgan kredit", f"{live_credits} sahifa")
+        st.divider()
+        lang = st.selectbox("Asl matn tili:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
+        style = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+        if st.button("🚪 Chiqish"):
+            db.auth.sign_out()
+            st.session_state.clear()
+            st.rerun()
 
-        with col_info:
-            t_anal, t_chat = st.tabs(["🖋 Tahlil", "💬 Chat"])
-            
-            with t_anal:
-                if st.button("✨ Tahlilni boshlash"):
-                    with st.status("AI ishlamoqda...") as status:
-                        prompt = f"Siz matnshunos akademiksiz. {lang} va {style} uslubidagi qo'lyozmani tahlil qiling: 1.Transliteratsiya 2.Tarjima 3.Izoh."
-                        res = asyncio.run(call_ai_async(prompt, img))
-                        st.session_state.res_store[state_key] = res
-                        status.update(label="✅ Tayyor!", state="complete")
-                        st.rerun()
+    st.title("📜 Qo'lyozmalar Ekspertiza Markazi")
+    uploaded_file = st.file_uploader("Faylni yuklang (PDF, PNG, JPG, JPEG)", type=['pdf', 'png', 'jpg', 'jpeg'], label_visibility="collapsed")
 
-                if state_key in st.session_state.res_store:
-                    new_val = st.text_area("Tahrirlash:", value=st.session_state.res_store[state_key], height=450, key=f"ar_{state_key}")
-                    st.session_state.res_store[state_key] = new_val
+    if uploaded_file:
+        file_bytes = uploaded_file.getvalue()
+        file_id = get_file_hash(file_bytes)
+        is_pdf = uploaded_file.type == "application/pdf"
+        
+        if is_pdf:
+            try:
+                pdf_m = pdfium.PdfDocument(file_bytes)
+                t_pages = len(pdf_m)
+                pdf_m.close()
+                col_p, col_z = st.columns(2)
+                with col_p:
+                    p_idx = st.number_input(f"Sahifa (1-{t_pages}):", 1, t_pages) - 1
+                with col_z:
+                    z_val = st.slider("Zoom:", 1.0, 4.0, 2.5)
+            except: st.error("PDF o'qib bo'lmadi."); return
+        else:
+            p_idx = 0
+            z_val = st.slider("Zoom:", 1.0, 3.0, 1.5)
 
-            with t_chat:
-                c_container = st.container(height=400)
-                for m in st.session_state.chat_store[state_key]:
-                    c_container.chat_message(m["role"]).write(m["content"])
+        state_key = f"{file_id}_{p_idx}"
+        st.session_state.chats.setdefault(state_key, [])
 
-                if u_q := st.chat_input("Savol bering...", key=f"q_{state_key}"):
-                    st.session_state.chat_store[state_key].append({"role": "user", "content": u_q})
-                    with st.spinner("O'ylanmoqda..."):
-                        ctx = st.session_state.res_store.get(state_key, "Tahlil yo'q.")
-                        ans = asyncio.run(call_ai_async(f"Kontekst: {ctx}\n\nSavol: {u_q}", img))
-                        st.session_state.chat_store[state_key].append({"role": "assistant", "content": ans})
-                        st.rerun()
+        col_img, col_info = st.columns([1, 1.2])
+        img = render_page_optimized(file_bytes, p_idx, z_val, is_pdf)
+
+        if img:
+            with col_img:
+                st.image(img, use_container_width=True, caption=f"Varaq: {p_idx + 1}")
+                if st.session_state.ai_results.get(state_key):
+                    w_data = create_report(st.session_state.ai_results[state_key], st.session_state.chats[state_key])
+                    st.download_button("📥 Wordda yuklash", w_data, f"report_{state_key}.docx", use_container_width=True)
+
+            with col_info:
+                t_anal, t_chat = st.tabs(["🖋 Tahlil", "💬 Chat"])
+                
+                with t_anal:
+                    if st.button("✨ Tahlilni boshlash"):
+                        if live_credits > 0:
+                            with st.status("AI paleografik ekspertiza o'tkazmoqda...") as status:
+                                prompt = f"Siz matnshunos akademiksiz. {lang} va {style} uslubidagi ushbu manbani tahlil qiling: 1.Transliteratsiya (Lotin) 2.Tarjima (O'zbek) 3.Izoh."
+                                res = asyncio.run(call_ai_async(prompt, img))
+                                if "🚨" not in res:
+                                    st.session_state.ai_results[state_key] = res
+                                    use_credit_atomic(user_id)
+                                    status.update(label="✅ Tayyor!", state="complete")
+                                    st.rerun()
+                                else:
+                                    st.error(res)
+                        else: st.warning("Kredit yetarli emas.")
+
+                    if st.session_state.ai_results.get(state_key):
+                        res_val = st.text_area("Xulosani tahrirlash:", value=st.session_state.ai_results[state_key], height=450, key=f"ar_{state_key}")
+                        st.session_state.ai_results[state_key] = res_val
+
+                with t_chat:
+                    chat_history = st.session_state.chats[state_key]
+                    c_container = st.container(height=400)
+                    for m in chat_history:
+                        c_container.chat_message(m["role"]).write(m["content"])
+
+                    if u_q := st.chat_input("Savol bering...", key=f"q_{state_key}"):
+                        if fetch_live_credits(user_id) > 0:
+                            chat_history.append({"role": "user", "content": u_q})
+                            with st.spinner("AI o'ylamoqda..."):
+                                ctx = st.session_state.ai_results.get(state_key, "Tahlil yo'q.")
+                                c_prompt = f"Hujjat tahlili konteksti: {ctx}\n\nSavol: {u_q}"
+                                # Chat uchun tejamkor rasm (scale 1.5)
+                                c_img = render_page_optimized(file_bytes, p_idx, 1.5, is_pdf)
+                                ans = asyncio.run(call_ai_async(c_prompt, c_img))
+                                chat_history.append({"role": "assistant", "content": ans})
+                                use_credit_atomic(user_id)
+                                st.rerun()
+                        else: st.error("Kredit yetarli emas.")
+
     gc.collect()
+
+if __name__ == "__main__":
+    main()
