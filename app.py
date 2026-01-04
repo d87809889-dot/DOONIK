@@ -9,15 +9,16 @@ import asyncio
 import base64
 import hashlib
 import logging
+import time
 from datetime import datetime
 from docx import Document
 
-# --- 1. KONFIGURATSIYA ---
+# --- 1. KONFIGURATSIYA VA LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(
-    page_title="Manuscript AI - Enterprise Pro",
+    page_title="Manuscript AI - Enterprise Academic",
     page_icon="📜",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -33,7 +34,7 @@ st.markdown("""
         border-left: 10px solid #c5a059; box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         color: #1a1a1a; line-height: 1.7; font-size: 18px;
     }
-    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000 !important; border: 1px solid #c5a059 !important; font-size: 16px; }
+    .stTextArea textarea { background-color: #fdfaf1 !important; color: #000 !important; border: 2px solid #c5a059 !important; font-size: 16px; }
     .chat-bubble-user { background-color: #e2e8f0; color: black; padding: 12px; border-radius: 10px; margin: 5px 0; border-left: 5px solid #1e3a8a; }
     .chat-bubble-ai { background-color: #ffffff; color: black; padding: 12px; border-radius: 10px; margin: 5px 0; border: 1px solid #d4af37; }
     .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important; color: #c5a059 !important; font-weight: bold; border: none; }
@@ -41,50 +42,48 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. CORE SERVICES (SUPABASE & AI) ---
+# --- 3. CORE SERVICES ---
 
 @st.cache_resource
 def get_db() -> Client:
-    try:
-        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception as e:
-        st.error("Ma'lumotlar bazasiga ulanishda xatolik!")
-        st.stop()
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 db = get_db()
 
 @st.cache_resource
 def init_gemini():
-    """404 XATOSINI YO'QOTUVCHI AVTOMATIK LOADER"""
+    """404 XATOSINI YO'QOTUVCHI AVTOMATIK QIDIRUV TIZIMI"""
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         
-        # 1. Google serveridan ruxsat etilgan modellarni so'raymiz
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # 1. Google'dan mavjud modellarni so'raymiz
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
         
-        # 2. Ishlaydigan nomlarni tartib bilan tekshiramiz
-        # Sizdagi 404 xatosini yengish uchun 'gemini-1.5-flash' (latest-siz) birinchi o'rinda
-        targets = [
+        # 2. Eng barqaror modellarni tartib bilan tekshiramiz
+        # 'models/gemini-1.5-flash' bu v1 (stable) yo'lagi uchun eng ma'quli
+        priority_list = [
             'models/gemini-1.5-flash',
             'models/gemini-1.5-flash-latest',
-            'models/gemini-1.5-pro-latest',
+            'models/gemini-1.5-pro',
             'models/gemini-pro-vision'
         ]
         
-        chosen = None
-        for target in targets:
+        chosen_model = None
+        for target in priority_list:
             if target in available_models:
-                chosen = target
+                chosen_model = target
                 break
         
-        if not chosen:
-            # Agar birortasi ham mos kelmasa, birinchi mavjud modelni olamiz
-            chosen = available_models[0] if available_models else 'gemini-1.5-flash'
+        if not chosen_model:
+            chosen_model = available_models[0] if available_models else 'models/gemini-1.5-flash'
             
-        logger.info(f"Muvaffaqiyatli tanlangan model: {chosen}")
-        return genai.GenerativeModel(model_name=chosen)
+        logger.info(f"Tizim tanlagan model: {chosen_model}")
+        return genai.GenerativeModel(model_name=chosen_model)
     except Exception as e:
-        st.error(f"AI Model sozlashda xatolik: {e}")
+        st.error(f"AI tizimini ulashda xatolik: {e}")
         return None
 
 ai_model = init_gemini()
@@ -116,14 +115,13 @@ def img_to_payload(img: Image.Image):
     img.save(buffered, format="JPEG", quality=85)
     return {"mime_type": "image/jpeg", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
-# --- 5. KREDIT TIZIMI ---
+# --- 5. REAL-TIME KREDIT NAZORATI ---
 
 def fetch_live_credits(user_id: str):
     try:
         res = db.table("profiles").select("credits").eq("id", user_id).single().execute()
         return res.data["credits"] if res.data else 0
-    except:
-        return 0
+    except: return 0
 
 def use_credit_atomic(user_id: str):
     current = fetch_live_credits(user_id)
@@ -135,9 +133,9 @@ def use_credit_atomic(user_id: str):
 # --- 6. ASYNC AI LOGIC ---
 
 async def call_ai_async(prompt: str, img: Image.Image):
-    """Asinxron AI so'rovi (Non-blocking)"""
     try:
         payload = img_to_payload(img)
+        # 404 xatosidan qochish uchun thread-pool orqali chaqiramiz
         response = await asyncio.to_thread(ai_model.generate_content, [prompt, payload])
         return response.text
     except Exception as e:
@@ -148,9 +146,10 @@ async def call_ai_async(prompt: str, img: Image.Image):
 def create_report(analysis, chat_history):
     doc = Document()
     doc.add_heading('Manuscript AI: Akademik Hisobot', 0)
+    doc.add_heading('Ekspertiza Xulosasi', level=1)
     doc.add_paragraph(analysis)
     if chat_history:
-        doc.add_heading('Suhbat Tarixi', 1)
+        doc.add_heading('Ilmiy Muloqot Tarixi', level=1)
         for msg in chat_history:
             doc.add_paragraph(f"{msg['role'].upper()}: {msg['content']}")
     bio = io.BytesIO()
@@ -160,7 +159,7 @@ def create_report(analysis, chat_history):
 # --- 8. ASOSIY ILOVA ---
 
 def main():
-    # --- AUTH FLOW ---
+    # --- 🔐 AUTH FLOW ---
     if "user" not in st.session_state:
         st.session_state.user = None
 
@@ -173,6 +172,7 @@ def main():
         _, col_mid, _ = st.columns([1, 1.5, 1])
         with col_mid:
             st.markdown("<br><br><h2>🏛 Manuscript AI Login</h2>", unsafe_allow_html=True)
+            st.info("Akademik tizimga kirish uchun Google hisobingizdan foydalaning.")
             if st.button("🌐 Google orqali kirish", use_container_width=True):
                 res = db.auth.sign_in_with_oauth({
                     "provider": "google", 
@@ -181,7 +181,7 @@ def main():
                 st.markdown(f'<meta http-equiv="refresh" content="0;url={res.url}">', unsafe_allow_html=True)
         return
 
-    # --- STATE INIT ---
+    # --- INITIALIZE STATE ---
     user_id = st.session_state.user.id
     st.session_state.setdefault("ai_results", {})
     st.session_state.setdefault("chats", {})
@@ -217,7 +217,7 @@ def main():
                     p_idx = st.number_input(f"Sahifa (1-{t_pages}):", 1, t_pages) - 1
                 with col_z:
                     z_val = st.slider("Zoom:", 1.0, 4.0, 2.5)
-            except: st.error("Fayl o'qib bo'lmadi."); return
+            except: st.error("PDF o'qib bo'lmadi."); return
         else:
             p_idx = 0
             z_val = st.slider("Zoom:", 1.0, 3.0, 1.5)
@@ -242,7 +242,7 @@ def main():
                     if st.button("✨ Tahlilni boshlash"):
                         if live_credits > 0:
                             with st.status("AI paleografik ekspertiza o'tkazmoqda...") as status:
-                                prompt = f"Siz dunyo darajasidagi matnshunos akademiksiz. {lang} va {style} uslubidagi ushbu manbani tahlil qiling: 1.Transliteratsiya (Lotin) 2.Tarjima (O'zbek) 3.Izoh."
+                                prompt = f"Siz matnshunos akademiksiz. {lang} va {style} uslubidagi ushbu manbani tahlil qiling: 1.Transliteratsiya (Lotin) 2.Tarjima (O'zbek) 3.Izoh."
                                 res = asyncio.run(call_ai_async(prompt, img))
                                 if "🚨" not in res:
                                     st.session_state.ai_results[state_key] = res
@@ -266,9 +266,10 @@ def main():
                     if u_q := st.chat_input("Savol bering...", key=f"q_{state_key}"):
                         if fetch_live_credits(user_id) > 0:
                             chat_history.append({"role": "user", "content": u_q})
-                            with st.spinner("AI o'ylanmoqda..."):
+                            with st.spinner("AI o'ylamoqda..."):
                                 ctx = st.session_state.ai_results.get(state_key, "Tahlil yo'q.")
-                                c_prompt = f"Kontekst: {ctx}\nSavol: {u_q}"
+                                c_prompt = f"Hujjat tahlili konteksti: {ctx}\n\nSavol: {u_q}"
+                                # Chat uchun tejamkor rasm (scale 1.5)
                                 c_img = render_page_optimized(file_bytes, p_idx, 1.5, is_pdf)
                                 ans = asyncio.run(call_ai_async(c_prompt, c_img))
                                 chat_history.append({"role": "assistant", "content": ans})
@@ -280,4 +281,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
