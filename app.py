@@ -9,7 +9,7 @@ from supabase import create_client, Client
 
 # --- 1. TIZIM VA SEO SOZLAMALARI ---
 st.set_page_config(
-    page_title="Manuscript AI - Academic Master 2026", 
+    page_title="Manuscript AI - Expert Edition 2.0", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
@@ -46,8 +46,8 @@ if not st.session_state.auth:
     _, col_mid, _ = st.columns([1, 1.5, 1])
     with col_mid:
         st.markdown("<br><br><h2>🏛 AKADEMIK EKSPERTIZA</h2>", unsafe_allow_html=True)
-        email_in = st.text_input("Email")
-        pwd_in = st.text_input("Parol", type="password")
+        email_in = st.text_input("Emailingizni yozing")
+        pwd_in = st.text_input("Maxfiy parolni yozing", type="password")
         if st.button("TIZIMGA KIRISH"):
             if pwd_in == CORRECT_PASSWORD:
                 st.session_state.auth, st.session_state.u_email = True, email_in
@@ -56,22 +56,10 @@ if not st.session_state.auth:
                 st.error("Parol noto'g'ri!")
     st.stop()
 
-# --- 4. AI SOZLASH (FIX 404 - STABLE VERSION) ---
+# --- 4. AI MODELI (MAJBURIY 2.0 FLASH - 404 XATOSINI YECHISH) ---
 genai.configure(api_key=GEMINI_KEY)
-
-@st.cache_resource
-def load_robust_model():
-    """Modelni topishda 404 xatosidan qochish uchun turli nomlarni sinaydi"""
-    # 2026-yilda eng ishonchli nomlar
-    targets = ["gemini-1.5-flash", "gemini-1.5-flash-002", "gemini-flash-latest"]
-    for t in targets:
-        try:
-            return genai.GenerativeModel(model_name=t)
-        except:
-            continue
-    return genai.GenerativeModel(model_name='gemini-1.5-flash')
-
-model = load_robust_model()
+# Gemini 2.0 Flash hozirda eng aniq ishlayotgan model
+model = genai.GenerativeModel(model_name='gemini-2.0-flash')
 
 # --- 5. YORDAMCHI FUNKSIYALAR ---
 def img_to_payload(img):
@@ -85,7 +73,7 @@ def fetch_live_credits(email):
         return res.data["credits"] if res.data else 0
     except: return 0
 
-# --- 6. ASOSIY ILOVA LOGIKASI ---
+# --- 6. ASOSIY ILOVA ---
 if 'imgs' not in st.session_state: st.session_state.imgs = []
 if 'results' not in st.session_state: st.session_state.results = {}
 if 'chats' not in st.session_state: st.session_state.chats = {}
@@ -107,7 +95,7 @@ uploaded_file = st.file_uploader("Faylni yuklang", type=['pdf', 'png', 'jpg', 'j
 
 if uploaded_file:
     if st.session_state.get('last_fn') != uploaded_file.name:
-        with st.spinner('Manba yuklanmoqda...'):
+        with st.spinner('Manba tayyorlanmoqda...'):
             file_bytes = uploaded_file.getvalue()
             imgs = []
             if uploaded_file.type == "application/pdf":
@@ -118,13 +106,11 @@ if uploaded_file:
                 pdf.close()
             else:
                 imgs.append(Image.open(io.BytesIO(file_bytes)))
-            st.session_state.imgs = imgs
-            st.session_state.last_fn = uploaded_file.name
-            st.session_state.results = {}
-            st.session_state.chats = {}
+            st.session_state.imgs, st.session_state.last_fn = imgs, uploaded_file.name
+            st.session_state.results, st.session_state.chats = {}, {}
             gc.collect()
 
-    # Logdagi ogohlantirish tuzatildi: width="stretch"
+    # Prevyu (Natijalar chiqquncha ko'rinadi)
     if not st.session_state.results:
         cols = st.columns(min(len(st.session_state.imgs), 4))
         for idx, img in enumerate(st.session_state.imgs):
@@ -133,21 +119,20 @@ if uploaded_file:
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
         if live_credits >= len(st.session_state.imgs):
             prompt = f"Siz matnshunos akademiksiz. {lang} va {style} xatidagi ushbu qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
-            progress_bar = st.progress(0)
             for i, img in enumerate(st.session_state.imgs):
-                try:
-                    response = model.generate_content([prompt, img_to_payload(img)])
-                    st.session_state.results[i] = response.text
-                    db.table("profiles").update({"credits": live_credits - 1}).eq("email", st.session_state.u_email).execute()
-                    live_credits -= 1
-                    progress_bar.progress(int(((i + 1) / len(st.session_state.imgs)) * 100))
-                except Exception as e:
-                    st.error(f"Xato (Varaq {i+1}): {e}")
+                with st.status(f"Varaq {i+1} o'qilmoqda...") as s:
+                    try:
+                        response = model.generate_content([prompt, img_to_payload(img)])
+                        st.session_state.results[i] = response.text
+                        db.table("profiles").update({"credits": live_credits - 1}).eq("email", st.session_state.u_email).execute()
+                        live_credits -= 1
+                    except Exception as e:
+                        st.error(f"Xato (Sahifa {i+1}): {e}")
             st.rerun()
         else:
             st.warning("Kredit yetarli emas!")
 
-# --- NATIJALARNI KO'RSATISH ---
+# --- NATIJALARNI KO'RSATISH (BUTTONDAN TASHQARIDA - BU ENG MUHIMI) ---
 if st.session_state.results:
     st.divider()
     final_report = ""
@@ -156,13 +141,11 @@ if st.session_state.results:
             res = st.session_state.results[idx]
             st.markdown(f"#### 📖 Varaq {idx+1}")
             c1, c2 = st.columns([1, 1.2])
-            
-            with c1:
-                # Logdagi ogohlantirish tuzatildi: width="stretch"
-                st.image(img, width="stretch")
+            with c1: st.image(img, width="stretch")
             with c2:
-                st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='result-box'><b>AI Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
                 
+                # Editor
                 st.session_state.results[idx] = st.text_area(f"Tahrir ({idx+1}):", value=res, height=350, key=f"edit_{idx}")
                 final_report += f"\n\n--- VARAQ {idx+1} ---\n{st.session_state.results[idx]}"
 
