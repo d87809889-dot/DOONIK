@@ -9,16 +9,15 @@ import asyncio
 import base64
 import hashlib
 import logging
-import time
 from datetime import datetime
 from docx import Document
 
-# --- 1. KONFIGURATSIYA VA LOGGING ---
+# --- 1. KONFIGURATSIYA ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(
-    page_title="Manuscript AI - Pro Academic v3.5",
+    page_title="Manuscript AI - Enterprise Pro",
     page_icon="📜",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -46,7 +45,6 @@ st.markdown("""
 
 @st.cache_resource
 def get_db() -> Client:
-    """Supabase ulanishi"""
     try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception as e:
@@ -57,35 +55,36 @@ db = get_db()
 
 @st.cache_resource
 def init_gemini():
-    """404 XATOSINI YENGUVCHI AQLLI MODEL YUKLOVCHI"""
+    """404 XATOSINI YO'QOTUVCHI AVTOMATIK LOADER"""
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         
-        # Google'dan sizning kalitingiz uchun ruxsat berilgan hamma modellarni so'raymiz
-        available_models = [m.name for m in genai.list_models() 
-                           if 'generateContent' in m.supported_generation_methods]
+        # 1. Google serveridan ruxsat etilgan modellarni so'raymiz
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # Eng barqaror modellarni tartib bilan tekshiramiz
-        priority_targets = [
+        # 2. Ishlaydigan nomlarni tartib bilan tekshiramiz
+        # Sizdagi 404 xatosini yengish uchun 'gemini-1.5-flash' (latest-siz) birinchi o'rinda
+        targets = [
             'models/gemini-1.5-flash',
-            'models/gemini-1.5-flash-001',
-            'models/gemini-1.5-pro',
+            'models/gemini-1.5-flash-latest',
+            'models/gemini-1.5-pro-latest',
             'models/gemini-pro-vision'
         ]
         
-        chosen_model = None
-        for target in priority_targets:
+        chosen = None
+        for target in targets:
             if target in available_models:
-                chosen_model = target
+                chosen = target
                 break
         
-        if not chosen_model:
-            # Agar birortasi mos kelmasa, ro'yxatdagisining birinchisini olamiz
-            chosen_model = available_models[0] if available_models else 'gemini-1.5-flash'
+        if not chosen:
+            # Agar birortasi ham mos kelmasa, birinchi mavjud modelni olamiz
+            chosen = available_models[0] if available_models else 'gemini-1.5-flash'
             
-        return genai.GenerativeModel(model_name=chosen_model)
+        logger.info(f"Muvaffaqiyatli tanlangan model: {chosen}")
+        return genai.GenerativeModel(model_name=chosen)
     except Exception as e:
-        st.error(f"AI Model ulanishida xatolik: {e}")
+        st.error(f"AI Model sozlashda xatolik: {e}")
         return None
 
 ai_model = init_gemini()
@@ -109,7 +108,7 @@ def render_page_optimized(file_content: bytes, page_idx: int, scale: float, is_p
         else:
             return Image.open(io.BytesIO(file_content))
     except Exception as e:
-        logger.error(f"Render error: {e}")
+        logger.error(f"Render xatosi: {e}")
         return None
 
 def img_to_payload(img: Image.Image):
@@ -117,7 +116,7 @@ def img_to_payload(img: Image.Image):
     img.save(buffered, format="JPEG", quality=85)
     return {"mime_type": "image/jpeg", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
-# --- 5. REAL-TIME KREDIT NAZORATI ---
+# --- 5. KREDIT TIZIMI ---
 
 def fetch_live_credits(user_id: str):
     try:
@@ -136,28 +135,22 @@ def use_credit_atomic(user_id: str):
 # --- 6. ASYNC AI LOGIC ---
 
 async def call_ai_async(prompt: str, img: Image.Image):
-    """AI so'rovini asinxron threadda bajarish (404 xatosini tutish bilan)"""
+    """Asinxron AI so'rovi (Non-blocking)"""
     try:
         payload = img_to_payload(img)
         response = await asyncio.to_thread(ai_model.generate_content, [prompt, payload])
         return response.text
     except Exception as e:
-        err_msg = str(e)
-        if "404" in err_msg:
-            return "🚨 Xatolik (404): Model nomi o'zgargan. Iltimos, sahifani yangilang (F5)."
-        if "429" in err_msg:
-            return "🚨 Limit: Google so'rovlar limitini to'ldirdi. 60 soniya kuting."
-        return f"🚨 Xatolik: {err_msg}"
+        return f"🚨 AI Xatosi: {str(e)}"
 
-# --- 7. WORD EXPORT ---
+# --- 7. EXPORT ---
 
-def create_report(analysis_text, chat_history):
+def create_report(analysis, chat_history):
     doc = Document()
     doc.add_heading('Manuscript AI: Akademik Hisobot', 0)
-    doc.add_heading('Ekspertiza Xulosasi', level=1)
-    doc.add_paragraph(analysis_text)
+    doc.add_paragraph(analysis)
     if chat_history:
-        doc.add_heading('Suhbat Tarixi', level=1)
+        doc.add_heading('Suhbat Tarixi', 1)
         for msg in chat_history:
             doc.add_paragraph(f"{msg['role'].upper()}: {msg['content']}")
     bio = io.BytesIO()
@@ -180,9 +173,11 @@ def main():
         _, col_mid, _ = st.columns([1, 1.5, 1])
         with col_mid:
             st.markdown("<br><br><h2>🏛 Manuscript AI Login</h2>", unsafe_allow_html=True)
-            st.info("Davom etish uchun Google hisobingizdan foydalaning.")
             if st.button("🌐 Google orqali kirish", use_container_width=True):
-                res = db.auth.sign_in_with_oauth({"provider": "google", "options": {"redirect_to": st.secrets["REDIRECT_URL"]}})
+                res = db.auth.sign_in_with_oauth({
+                    "provider": "google", 
+                    "options": {"redirect_to": st.secrets["REDIRECT_URL"]}
+                })
                 st.markdown(f'<meta http-equiv="refresh" content="0;url={res.url}">', unsafe_allow_html=True)
         return
 
@@ -197,7 +192,7 @@ def main():
         st.markdown(f"👤 **{st.session_state.user.email}**")
         st.metric("💳 Qolgan kredit", f"{live_credits} sahifa")
         st.divider()
-        lang = st.selectbox("Asl til:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
+        lang = st.selectbox("Asl matn tili:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
         style = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
         if st.button("🚪 Chiqish"):
             db.auth.sign_out()
@@ -222,7 +217,7 @@ def main():
                     p_idx = st.number_input(f"Sahifa (1-{t_pages}):", 1, t_pages) - 1
                 with col_z:
                     z_val = st.slider("Zoom:", 1.0, 4.0, 2.5)
-            except: st.error("PDF o'qib bo'lmadi."); return
+            except: st.error("Fayl o'qib bo'lmadi."); return
         else:
             p_idx = 0
             z_val = st.slider("Zoom:", 1.0, 3.0, 1.5)
@@ -230,16 +225,15 @@ def main():
         state_key = f"{file_id}_{p_idx}"
         st.session_state.chats.setdefault(state_key, [])
 
-        # --- DISPLAY ---
         col_img, col_info = st.columns([1, 1.2])
         img = render_page_optimized(file_bytes, p_idx, z_val, is_pdf)
 
         if img:
             with col_img:
-                st.image(img, use_container_width=True, caption=f"Sahifa: {p_idx + 1}")
+                st.image(img, use_container_width=True, caption=f"Varaq: {p_idx + 1}")
                 if st.session_state.ai_results.get(state_key):
                     w_data = create_report(st.session_state.ai_results[state_key], st.session_state.chats[state_key])
-                    st.download_button("📥 Wordda yuklash", w_data, f"tahlil_{state_key}.docx", use_container_width=True)
+                    st.download_button("📥 Wordda yuklash", w_data, f"report_{state_key}.docx", use_container_width=True)
 
             with col_info:
                 t_anal, t_chat = st.tabs(["🖋 Tahlil", "💬 Chat"])
@@ -247,8 +241,8 @@ def main():
                 with t_anal:
                     if st.button("✨ Tahlilni boshlash"):
                         if live_credits > 0:
-                            with st.status("AI ishlamoqda...") as status:
-                                prompt = f"Siz matnshunos akademiksiz. {lang} va {style} uslubidagi qo'lyozmani tahlil qiling: 1.Transliteratsiya 2.Tarjima 3.Izoh."
+                            with st.status("AI paleografik ekspertiza o'tkazmoqda...") as status:
+                                prompt = f"Siz dunyo darajasidagi matnshunos akademiksiz. {lang} va {style} uslubidagi ushbu manbani tahlil qiling: 1.Transliteratsiya (Lotin) 2.Tarjima (O'zbek) 3.Izoh."
                                 res = asyncio.run(call_ai_async(prompt, img))
                                 if "🚨" not in res:
                                     st.session_state.ai_results[state_key] = res
@@ -257,12 +251,11 @@ def main():
                                     st.rerun()
                                 else:
                                     st.error(res)
-                                    status.update(label="❌ Xato", state="error")
-                        else: st.warning("Kredit tugagan.")
+                        else: st.warning("Kredit yetarli emas.")
 
                     if st.session_state.ai_results.get(state_key):
-                        new_txt = st.text_area("Tahrirlash:", value=st.session_state.ai_results[state_key], height=450, key=f"ar_{state_key}")
-                        st.session_state.ai_results[state_key] = new_txt
+                        res_val = st.text_area("Xulosani tahrirlash:", value=st.session_state.ai_results[state_key], height=450, key=f"ar_{state_key}")
+                        st.session_state.ai_results[state_key] = res_val
 
                 with t_chat:
                     chat_history = st.session_state.chats[state_key]
@@ -271,12 +264,11 @@ def main():
                         c_container.chat_message(m["role"]).write(m["content"])
 
                     if u_q := st.chat_input("Savol bering...", key=f"q_{state_key}"):
-                        if live_credits > 0:
+                        if fetch_live_credits(user_id) > 0:
                             chat_history.append({"role": "user", "content": u_q})
-                            with st.spinner("O'ylanmoqda..."):
-                                ctx = st.session_state.ai_results.get(state_key, "")
+                            with st.spinner("AI o'ylanmoqda..."):
+                                ctx = st.session_state.ai_results.get(state_key, "Tahlil yo'q.")
                                 c_prompt = f"Kontekst: {ctx}\nSavol: {u_q}"
-                                # Tejamkor chat rasmi
                                 c_img = render_page_optimized(file_bytes, p_idx, 1.5, is_pdf)
                                 ans = asyncio.run(call_ai_async(c_prompt, c_img))
                                 chat_history.append({"role": "assistant", "content": ans})
@@ -288,4 +280,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
