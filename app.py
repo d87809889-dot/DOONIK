@@ -10,13 +10,13 @@ from docx import Document
 # 1. TIZIM VA SEO SOZLAMALARI
 # ==========================================
 st.set_page_config(
-    page_title="Manuscript AI - Pro Master 2026",
+    page_title="Manuscript AI - Enterprise Pro 2.0",
     page_icon="📜",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- PROFESSIONAL ANTIK DIZAYN (KUCHAYTIRILGAN CSS) ---
+# --- PROFESSIONAL ANTIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
     #MainMenu, footer, header {visibility: hidden !important;}
@@ -33,7 +33,7 @@ st.markdown("""
         color: #1a1a1a !important; font-size: 17px; line-height: 1.7 !important;
     }
 
-    /* TAHRIRLASH OYNASI */
+    /* TAHRIRLASH OYNASI - MATN HAR DOIM QORA */
     .stTextArea textarea {
         background-color: #fdfaf1 !important; color: #000000 !important; 
         border: 2px solid #c5a059 !important; font-family: 'Courier New', monospace !important;
@@ -55,11 +55,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Verification Meta
+# Google Search Console Verification
 st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
 
 # ==========================================
-# 2. XAVFSIZLIK VA PAROL TIZIMI
+# 2. XAVFSIZLIK (PAROL TIZIMI)
 # ==========================================
 if "auth" not in st.session_state:
     st.session_state.auth = False
@@ -85,22 +85,11 @@ if not st.session_state.auth:
     st.stop()
 
 # ==========================================
-# 3. AI MODELI (404 XATOSINI ILDIZI BILAN TUZATISH)
+# 3. AI MODELI (MAJBURIY GEMINI 2.0 FLASH)
 # ==========================================
 genai.configure(api_key=GEMINI_KEY)
-
-# MUHIM: 404 va v1beta xatosini yo'qotish uchun barqaror model identifikatorini tanlaymiz
-@st.cache_resource
-def load_stable_engine():
-    """Googlening yangi barqaror (stable) tizimidagi modelga ulanadi"""
-    # models/ prefiksi orqali v1 tizimiga qattiq ulanishni ta'minlaymiz
-    try:
-        return genai.GenerativeModel(model_name='gemini-1.5-flash')
-    except:
-        # Agar SDK eski bo'lsa, zaxira nomlarni sinaymiz
-        return genai.GenerativeModel(model_name='gemini-1.5-flash-latest')
-
-model = load_stable_engine()
+# Gemini 2.0 Flash - eng yangi va barqaror model
+model = genai.GenerativeModel(model_name='gemini-2.0-flash')
 
 # ==========================================
 # 4. YORDAMCHI FUNKSIYALAR
@@ -127,16 +116,15 @@ def render_page_optimized(file_content: bytes, page_idx: int, scale: float, is_p
         return None
 
 # ==========================================
-# 5. ASOSIY TADQIQOT INTERFEYSI
+# 5. TADQIQOT INTERFEYSI
 # ==========================================
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
     st.markdown("---")
+    st.write("🤖 **Model:** `Gemini 2.0 Flash`")
     lang = st.selectbox("Asl matn tili:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
     era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     st.markdown("---")
-    st.caption("✅ Model: 1.5 Flash (Stable v1)")
-    st.caption("♻️ Sifat: DPI 200 (Optimallashgan)")
     if st.button("🚪 TIZIMDAN CHIQISH"):
         st.session_state.auth = False
         st.rerun()
@@ -155,16 +143,13 @@ if uploaded_file:
             imgs = []
             if uploaded_file.type == "application/pdf":
                 pdf = pdfium.PdfDocument(file_bytes)
-                for i in range(min(len(pdf), 15)):
+                for i in range(min(len(pdf), 15)): # Max 15 sahifa barqarorlik uchun
                     imgs.append(render_page_optimized(file_bytes, i, 2.0, True))
                 pdf.close()
             else:
                 imgs.append(render_page_optimized(file_bytes, 0, 2.0, False))
-            
-            st.session_state.imgs = imgs
-            st.session_state.last_fn = uploaded_file.name
-            st.session_state.results = {}
-            st.session_state.chats = {}
+            st.session_state.imgs, st.session_state.last_fn = imgs, uploaded_file.name
+            st.session_state.results, st.session_state.chats = {}, {}
             gc.collect()
 
     cols = st.columns(min(len(st.session_state.imgs), 4))
@@ -180,19 +165,15 @@ if uploaded_file:
         for i, img in enumerate(st.session_state.imgs):
             with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as s:
                 try:
-                    payload = img_to_payload(img)
-                    response = model.generate_content([prompt, payload])
+                    response = model.generate_content([prompt, img_to_payload(img)])
                     st.session_state.results[i] = response.text
                     s.update(label=f"Varaq {i+1} tayyor!", state="complete")
-                    time.sleep(1) # RPM limit himoyasi
                 except Exception as e:
                     st.error(f"Xato: {e}")
 
-    # --- RESULTS, EDITOR VA CHAT ---
+    # --- NATIJALAR, TAHRIR VA CHAT ---
     if st.session_state.results:
         st.divider()
-        st.markdown("### 🖋 Ekspertiza Natijalari va Muloqot")
-        
         final_doc_text = ""
         for idx, img in enumerate(st.session_state.imgs):
             if idx in st.session_state.results:
@@ -206,6 +187,7 @@ if uploaded_file:
                 ed_val = st.text_area(f"Varaq {idx+1} tahriri:", value=res, height=400, key=f"ed_{idx}")
                 final_doc_text += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
+                # Interaktiv Chat
                 st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
                 st.session_state.chats.setdefault(idx, [])
                 for ch in st.session_state.chats[idx]:
@@ -216,8 +198,7 @@ if uploaded_file:
                 if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                     if user_q:
                         with st.spinner("AI tahlil qilmoqda..."):
-                            chat_prompt = f"Hujjat: {ed_val}\nSavol: {user_q}"
-                            chat_res = model.generate_content([chat_prompt, img_to_payload(img)])
+                            chat_res = model.generate_content([f"Hujjat: {ed_val}\nSavol: {user_q}", img_to_payload(img)])
                             st.session_state.chats[idx].append({"q": user_q, "a": chat_res.text})
                             st.rerun()
                 st.markdown("---")
@@ -228,5 +209,3 @@ if uploaded_file:
             doc.add_paragraph(final_doc_text)
             bio = io.BytesIO(); doc.save(bio)
             st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
-
-
