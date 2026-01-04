@@ -9,13 +9,13 @@ from supabase import create_client, Client
 
 # --- 1. TIZIM VA SEO SOZLAMALARI ---
 st.set_page_config(
-    page_title="Manuscript AI - Academic Master v20.0", 
+    page_title="Manuscript AI - Academic Master 2026", 
     page_icon="📜", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. PROFESSIONAL ANTIK DIZAYN (CSS) ---
+# --- 2. PROFESSIONAL ANTIK-AKADEMIK DIZAYN (CSS) ---
 st.markdown("""
     <style>
     #MainMenu, footer, header {visibility: hidden !important;}
@@ -26,7 +26,7 @@ st.markdown("""
     .chat-bubble-user { background-color: #e2e8f0; color: #000000 !important; padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #1e3a8a; }
     .chat-bubble-ai { background-color: #ffffff; color: #1a1a1a !important; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #d4af37; }
     section[data-testid="stSidebar"] { background-color: #0c1421 !important; border-right: 2px solid #c5a059; }
-    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important; color: #c5a059 !important; font-weight: bold; width: 100% !important; padding: 12px; border: 1px solid #c5a059; }
+    .stButton>button { background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important; color: #c5a059 !important; font-weight: bold; width: 100%; padding: 12px; border: 1px solid #c5a059; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -52,12 +52,26 @@ if not st.session_state.auth:
             if pwd_in == CORRECT_PASSWORD:
                 st.session_state.auth, st.session_state.u_email = True, email_in
                 st.rerun()
-            else: st.error("Parol noto'g'ri!")
+            else:
+                st.error("Parol noto'g'ri!")
     st.stop()
 
-# --- 4. AI SOZLASH (BARQAROR V1) ---
+# --- 4. AI SOZLASH (FIX 404 - STABLE VERSION) ---
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+
+@st.cache_resource
+def load_robust_model():
+    """Modelni topishda 404 xatosidan qochish uchun turli nomlarni sinaydi"""
+    # 2026-yilda eng ishonchli nomlar
+    targets = ["gemini-1.5-flash", "gemini-1.5-flash-002", "gemini-flash-latest"]
+    for t in targets:
+        try:
+            return genai.GenerativeModel(model_name=t)
+        except:
+            continue
+    return genai.GenerativeModel(model_name='gemini-1.5-flash')
+
+model = load_robust_model()
 
 # --- 5. YORDAMCHI FUNKSIYALAR ---
 def img_to_payload(img):
@@ -72,7 +86,6 @@ def fetch_live_credits(email):
     except: return 0
 
 # --- 6. ASOSIY ILOVA LOGIKASI ---
-# Session state xotiralarini yaratish
 if 'imgs' not in st.session_state: st.session_state.imgs = []
 if 'results' not in st.session_state: st.session_state.results = {}
 if 'chats' not in st.session_state: st.session_state.chats = {}
@@ -107,51 +120,37 @@ if uploaded_file:
                 imgs.append(Image.open(io.BytesIO(file_bytes)))
             st.session_state.imgs = imgs
             st.session_state.last_fn = uploaded_file.name
-            st.session_state.results = {} # Noldan boshlash
+            st.session_state.results = {}
             st.session_state.chats = {}
             gc.collect()
 
-    # Prevyu (Agar natijalar hali bo'lmasa ko'rinadi)
+    # Logdagi ogohlantirish tuzatildi: width="stretch"
     if not st.session_state.results:
         cols = st.columns(min(len(st.session_state.imgs), 4))
         for idx, img in enumerate(st.session_state.imgs):
-            cols[idx % 4].image(img, caption=f"Varaq {idx+1}", width=None)
+            cols[idx % 4].image(img, caption=f"Varaq {idx+1}", width="stretch")
 
-    # TAHLIL TUGMASI
     if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
         if live_credits >= len(st.session_state.imgs):
             prompt = f"Siz matnshunos akademiksiz. {lang} va {style} xatidagi ushbu qo'lyozmani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Izoh."
-            
-            # Progress bar yaratamiz
-            progress_text = "Ekspertiza o'tkazilmoqda. Iltimos kuting..."
-            my_bar = st.progress(0, text=progress_text)
-            
+            progress_bar = st.progress(0)
             for i, img in enumerate(st.session_state.imgs):
                 try:
-                    # AIga so'rov yuborish
                     response = model.generate_content([prompt, img_to_payload(img)])
                     st.session_state.results[i] = response.text
-                    
-                    # Kreditni bazada kamaytirish
                     db.table("profiles").update({"credits": live_credits - 1}).eq("email", st.session_state.u_email).execute()
                     live_credits -= 1
-                    
-                    # Progressni yangilash
-                    percent = int(((i + 1) / len(st.session_state.imgs)) * 100)
-                    my_bar.progress(percent, text=f"{i+1}-sahifa tayyor...")
+                    progress_bar.progress(int(((i + 1) / len(st.session_state.imgs)) * 100))
                 except Exception as e:
                     st.error(f"Xato (Varaq {i+1}): {e}")
-            
-            st.rerun() # Hammasi tugagach natijalarni ko'rsatish uchun sahifani yangilaymiz
+            st.rerun()
         else:
             st.warning("Kredit yetarli emas!")
 
-# --- NATIJALARNI KO'RSATISH (TUGMADAN TASHQARIDA - DOIM KO'RINADI) ---
+# --- NATIJALARNI KO'RSATISH ---
 if st.session_state.results:
     st.divider()
-    st.markdown("### 🖋 Ekspertiza Natijalari")
     final_report = ""
-
     for idx, img in enumerate(st.session_state.imgs):
         if idx in st.session_state.results:
             res = st.session_state.results[idx]
@@ -159,11 +158,11 @@ if st.session_state.results:
             c1, c2 = st.columns([1, 1.2])
             
             with c1:
-                st.image(img, use_container_width=True)
+                # Logdagi ogohlantirish tuzatildi: width="stretch"
+                st.image(img, width="stretch")
             with c2:
                 st.markdown(f"<div class='result-box'><b>AI Akademik Xulosasi:</b><br><br>{res}</div>", unsafe_allow_html=True)
                 
-                # Tahrirlash oynasi
                 st.session_state.results[idx] = st.text_area(f"Tahrir ({idx+1}):", value=res, height=350, key=f"edit_{idx}")
                 final_report += f"\n\n--- VARAQ {idx+1} ---\n{st.session_state.results[idx]}"
 
@@ -174,9 +173,7 @@ if st.session_state.results:
                     st.markdown(f"<div class='chat-bubble-user'><b>Savol:</b> {ch['q']}</div>", unsafe_allow_html=True)
                     st.markdown(f"<div class='chat-bubble-ai'><b>AI:</b> {ch['a']}</div>", unsafe_allow_html=True)
 
-                # Savol yuborish
-                chat_input_key = f"input_{idx}"
-                user_q = st.text_input("Savol bering:", key=chat_input_key)
+                user_q = st.text_input("Savol bering:", key=f"input_{idx}")
                 if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                     if user_q:
                         with st.spinner("AI tahlil qilmoqda..."):
@@ -191,4 +188,3 @@ if st.session_state.results:
         doc.add_paragraph(final_report)
         bio = io.BytesIO(); doc.save(bio)
         st.download_button("📥 WORDDA YUKLAB OLISH", bio.getvalue(), "academic_report.docx")
-
