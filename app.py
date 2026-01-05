@@ -26,21 +26,18 @@ st.markdown("""
     .main { background-color: #f4ecd8 !important; color: #1a1a1a !important; font-family: 'Times New Roman', serif; }
     h1, h2, h3, h4 { color: #0c1421 !important; font-family: 'Georgia', serif; border-bottom: 2px solid #c5a059; text-align: center; }
 
-    /* AI TAHLIL KARTASI */
     .result-box {
         background-color: #ffffff !important; padding: 25px !important; border-radius: 12px !important;
         border-left: 10px solid #c5a059 !important; box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
         color: #1a1a1a !important; font-size: 17px; line-height: 1.7 !important;
     }
 
-    /* TAHRIRLASH OYNASI - MATN HAR DOIM QORA */
     .stTextArea textarea {
         background-color: #fdfaf1 !important; color: #000000 !important; 
         border: 2px solid #c5a059 !important; font-family: 'Courier New', monospace !important;
         font-size: 18px !important; padding: 20px !important;
     }
 
-    /* CHAT DIZAYNI */
     .chat-bubble-user { background-color: #e2e8f0; color: #000000 !important; padding: 12px; border-radius: 10px; margin-bottom: 5px; border-left: 5px solid #1e3a8a; }
     .chat-bubble-ai { background-color: #ffffff; color: #1a1a1a !important; padding: 12px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #d4af37; }
 
@@ -55,7 +52,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Search Console Verification
 st.markdown('<meta name="google-site-verification" content="VoHbKw2CuXghxz44hvmjYrk4s8YVChQTMfrgzuldQG0" />', unsafe_allow_html=True)
 
 # ==========================================
@@ -85,18 +81,18 @@ if not st.session_state.auth:
     st.stop()
 
 # ==========================================
-# 3. AI MODELI (MAJBURIY GEMINI 2.0 FLASH)
+# 3. AI MODELINI SOZLASH (ENG BARQAROR 1.5 FLASH)
 # ==========================================
+# models/ prefiksisiz 'gemini-1.5-flash' nomi SDK orqali eng barqaror ulanishni beradi
 genai.configure(api_key=GEMINI_KEY)
-# Gemini 2.0 Flash - eng yangi va barqaror model
-model = genai.GenerativeModel(model_name='gemini-2.0-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # ==========================================
 # 4. YORDAMCHI FUNKSIYALAR
 # ==========================================
 def img_to_payload(img: Image.Image):
     buffered = io.BytesIO()
-    img.save(buffered, format="JPEG", quality=85)
+    img.save(buffered, format="JPEG", quality=80) # Sifatni biroz pasaytirib tokenni tejaymiz
     return {"mime_type": "image/jpeg", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
 @st.cache_data(show_spinner=False)
@@ -121,7 +117,8 @@ def render_page_optimized(file_content: bytes, page_idx: int, scale: float, is_p
 with st.sidebar:
     st.markdown("<h2 style='color:#c5a059; text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
     st.markdown("---")
-    st.write("🤖 **Model:** `Gemini 2.0 Flash`")
+    st.write("🤖 Model: **Gemini 1.5 Flash (Stable)**")
+    st.write("🚀 Limit: **1,500 so'rov / kun**")
     lang = st.selectbox("Asl matn tili:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
     era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     st.markdown("---")
@@ -143,7 +140,7 @@ if uploaded_file:
             imgs = []
             if uploaded_file.type == "application/pdf":
                 pdf = pdfium.PdfDocument(file_bytes)
-                for i in range(min(len(pdf), 15)): # Max 15 sahifa barqarorlik uchun
+                for i in range(min(len(pdf), 15)): 
                     imgs.append(render_page_optimized(file_bytes, i, 2.0, True))
                 pdf.close()
             else:
@@ -165,13 +162,18 @@ if uploaded_file:
         for i, img in enumerate(st.session_state.imgs):
             with st.status(f"Varaq {i+1} ekspertizadan o'tmoqda...") as s:
                 try:
+                    # 429 xatosini oldini olish uchun har bir sahifa orasida 2 soniya kutamiz
+                    if i > 0: time.sleep(2)
+                    
                     response = model.generate_content([prompt, img_to_payload(img)])
                     st.session_state.results[i] = response.text
                     s.update(label=f"Varaq {i+1} tayyor!", state="complete")
                 except Exception as e:
+                    if "429" in str(e):
+                        st.error("Daqiqalik limit to'ldi. Iltimos 60 soniya kuting.")
+                        break
                     st.error(f"Xato: {e}")
 
-    # --- NATIJALAR, TAHRIR VA CHAT ---
     if st.session_state.results:
         st.divider()
         final_doc_text = ""
@@ -187,7 +189,6 @@ if uploaded_file:
                 ed_val = st.text_area(f"Varaq {idx+1} tahriri:", value=res, height=400, key=f"ed_{idx}")
                 final_doc_text += f"\n\n--- VARAQ {idx+1} ---\n{ed_val}"
 
-                # Interaktiv Chat
                 st.markdown(f"##### 💬 Varaq {idx+1} yuzasidan muloqot")
                 st.session_state.chats.setdefault(idx, [])
                 for ch in st.session_state.chats[idx]:
@@ -198,7 +199,8 @@ if uploaded_file:
                 if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                     if user_q:
                         with st.spinner("AI tahlil qilmoqda..."):
-                            chat_res = model.generate_content([f"Hujjat: {ed_val}\nSavol: {user_q}", img_to_payload(img)])
+                            # Chatda rasm yubormaymiz, faqat matn yuboramiz (tokenlarni va limitni tejash uchun)
+                            chat_res = model.generate_content(f"Hujjat tahlili: {ed_val}\nSavol: {user_q}")
                             st.session_state.chats[idx].append({"q": user_q, "a": chat_res.text})
                             st.rerun()
                 st.markdown("---")
