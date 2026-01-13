@@ -269,3 +269,4 @@ if uploaded_file:
             st.download_button("📥 WORD HISOBOTINI YUKLAB OLISH", bio.getvalue(), "expert_report.docx")
 
     gc.collect()
+
