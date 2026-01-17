@@ -7,6 +7,7 @@ import pypdfium2 as pdfium
 
 import io, gc, base64, time, random, html, re
 from datetime import datetime
+from collections import Counter
 
 from docx import Document
 from docx.shared import Pt
@@ -24,21 +25,20 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# =========================
-# THEME SWITCH (ALTERNATIV)
-# =========================
-THEME = "DARK_GOLD"  # "DARK_GOLD" | "PARCHMENT" | "MIDNIGHT"
+# ==========================================
+# 2) THEME (tanlangan: DARK_GOLD)
+# ==========================================
+THEME = "DARK_GOLD"  # tanlandi
+
 THEMES = {
     "DARK_GOLD": {
         "app_bg": "#0b1220",
         "surface": "#10182b",
         "sidebar_bg": "#0c1421",
-        "text": "#e9eefb",
-        "muted": "#b9c2d4",
+        "text": "#eaf0ff",
+        "muted": "#c7d0e6",
         "gold": "#c5a059",
         "gold2": "#d4af37",
-        "card": "#ffffff",
-        "card_text": "#111827",
     },
     "PARCHMENT": {
         "app_bg": "#f4ecd8",
@@ -48,26 +48,22 @@ THEMES = {
         "muted": "#3b4252",
         "gold": "#b98a2c",
         "gold2": "#c5a059",
-        "card": "#ffffff",
-        "card_text": "#111827",
     },
     "MIDNIGHT": {
         "app_bg": "#070b16",
         "surface": "#0e1630",
         "sidebar_bg": "#0b1020",
         "text": "#e6ecff",
-        "muted": "#aab6d6",
+        "muted": "#b6c3ea",
         "gold": "#5aa6ff",
         "gold2": "#7cc4ff",
-        "card": "#ffffff",
-        "card_text": "#111827",
     },
 }
 C = THEMES.get(THEME, THEMES["DARK_GOLD"])
 
 
 # ==========================================
-# 2) CSS (Pro + Fix + Diagnosis highlight)
+# 3) CSS (pro, kontrast fix, white gap fix)
 # ==========================================
 st.markdown(f"""
 <style>
@@ -86,10 +82,12 @@ html, body {{
   margin: 0 !important;
   padding: 0 !important;
 }}
+
 .stApp, div[data-testid="stAppViewContainer"] {{
   background: var(--app-bg) !important;
   min-height: 100vh !important;
 }}
+
 div[data-testid="stAppViewContainer"] .main .block-container {{
   padding-top: 3.25rem !important;
   padding-bottom: 1.25rem !important;
@@ -104,8 +102,12 @@ section[data-testid="stSidebar"] {{
   background: var(--sidebar-bg) !important;
   border-right: 2px solid var(--gold) !important;
 }}
-section[data-testid="stSidebar"] * {{ color: var(--text) !important; }}
-section[data-testid="stSidebar"] .stCaption {{ color: var(--muted) !important; }}
+section[data-testid="stSidebar"] * {{
+  color: var(--text) !important;
+}}
+section[data-testid="stSidebar"] .stCaption {{
+  color: var(--muted) !important;
+}}
 
 h1, h2, h3, h4 {{
   color: var(--gold) !important;
@@ -115,12 +117,15 @@ h1, h2, h3, h4 {{
   text-align: center !important;
   text-shadow: 0 1px 1px rgba(0,0,0,0.35);
 }}
-.stMarkdown p {{ color: var(--muted) !important; }}
+
+.stMarkdown p {{
+  color: var(--muted) !important;
+}}
 
 .stButton>button {{
   background: linear-gradient(135deg, var(--sidebar-bg) 0%, #1e3a8a 100%) !important;
   color: var(--gold) !important;
-  font-weight: 800 !important;
+  font-weight: 900 !important;
   width: 100% !important;
   padding: 11px 12px !important;
   border: 1px solid var(--gold) !important;
@@ -148,24 +153,21 @@ h1, h2, h3, h4 {{
   border-radius: 10px !important;
 }}
 
-.premium-alert {{
-  background: rgba(255,243,224,1);
-  border: 1px solid #ffb74d;
-  padding: 12px;
-  border-radius: 12px;
-  text-align: center;
-  color: #e65100;
-  font-weight: 800;
-  margin-bottom: 12px;
-}}
-
 .chat-user {{
-  background-color: #e2e8f0; color: #000; padding: 10px; border-radius: 10px;
-  border-left: 5px solid #1e3a8a; margin-bottom: 6px;
+  background-color: #e2e8f0;
+  color: #000;
+  padding: 10px;
+  border-radius: 10px;
+  border-left: 5px solid #1e3a8a;
+  margin-bottom: 6px;
 }}
 .chat-ai {{
-  background-color: #ffffff; color: #1a1a1a; padding: 10px; border-radius: 10px;
-  border: 1px solid #d4af37; margin-bottom: 14px;
+  background-color: #ffffff;
+  color: #1a1a1a;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #d4af37;
+  margin-bottom: 14px;
 }}
 
 .sticky-preview {{
@@ -191,13 +193,16 @@ h1, h2, h3, h4 {{
   transform-origin: center;
   cursor: zoom-in;
 }}
+
 @keyframes fadeUp {{
   from {{ opacity: 0; transform: translateY(10px); }}
   to   {{ opacity: 1; transform: translateY(0); }}
 }}
+
 @media (prefers-reduced-motion: reduce) {{
   * {{ animation: none !important; transition: none !important; }}
 }}
+
 @media (max-width: 768px) {{
   div[data-testid="stAppViewContainer"] .main .block-container {{
     padding-top: 3.5rem !important;
@@ -212,7 +217,7 @@ h1, h2, h3, h4 {{
 
 
 # ==========================================
-# 3) SERVICES
+# 4) SERVICES
 # ==========================================
 @st.cache_resource
 def get_db():
@@ -221,11 +226,11 @@ def get_db():
 db = get_db()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel(model_name="gemini-flash-latest")  # o'zgarmaydi
+model = genai.GenerativeModel(model_name="gemini-flash-latest")  # O'ZGARMAYDI
 
 
 # ==========================================
-# 4) STATE
+# 5) STATE
 # ==========================================
 if "auth" not in st.session_state: st.session_state.auth = False
 if "u_email" not in st.session_state: st.session_state.u_email = "Mehmon"
@@ -238,7 +243,7 @@ if "warn_rpc" not in st.session_state: st.session_state.warn_rpc = False
 
 
 # ==========================================
-# 5) HELPERS
+# 6) HELPERS (render/cache/preprocess/pages/ai/retry/credits)
 # ==========================================
 def pil_to_jpeg_bytes(img: Image.Image, quality: int = 88, max_side: int = 2400) -> bytes:
     img = img.convert("RGB")
@@ -267,10 +272,10 @@ def render_pdf_pages_to_bytes(file_bytes: bytes, max_pages: int, scale: float) -
             pass
     return out
 
-@st.cache_data(show_spinner=False, max_entries=64)
+@st.cache_data(show_spinner=False, max_entries=128)
 def preprocess_bytes(img_bytes: bytes, brightness: float, contrast: float, rotate: int) -> bytes:
     img = Image.open(io.BytesIO(img_bytes))
-    img = ImageOps.exif_transpose(img)
+    img = ImageOps.exif_transpose(img)  # rotation muammosini yo'qotadi
     if rotate:
         img = img.rotate(rotate, expand=True)
     img = ImageEnhance.Brightness(img).enhance(brightness)
@@ -329,172 +334,122 @@ def refund_credit(email: str) -> None:
     except Exception:
         pass
 
+def extract_diagnosis(text: str) -> dict:
+    """
+    AI natijasidan aniqlangan Til / Xat uslubi / Ishonchlilik ni ajratib oladi.
+    Prompt formatiga mos: "Til: ...", "Xat uslubi: ...", "Ishonchlilik: ..."
+    """
+    t = text or ""
+    def pick(rx):
+        m = re.search(rx, t, flags=re.IGNORECASE)
+        return (m.group(1).strip() if m else "").strip()
+
+    til = pick(r"Til\s*:\s*(.+)")
+    xat = pick(r"Xat\s*uslubi\s*:\s*(.+)")
+    conf = pick(r"Ishonchlilik\s*:\s*(.+)")
+    # tozalash
+    til = til.replace("|", "").strip()
+    xat = xat.replace("|", "").strip()
+    conf = conf.replace("|", "").strip()
+    return {"til": til, "xat": xat, "conf": conf}
+
+def aggregate_detected_meta(results: dict[int, str]) -> dict:
+    til_list = []
+    xat_list = []
+    conf_list = []
+    for _, txt in results.items():
+        d = extract_diagnosis(txt)
+        if d["til"] and "noma" not in d["til"].lower():
+            til_list.append(d["til"])
+        if d["xat"] and "noma" not in d["xat"].lower():
+            xat_list.append(d["xat"])
+        if d["conf"]:
+            conf_list.append(d["conf"])
+
+    til = Counter(til_list).most_common(1)[0][0] if til_list else ""
+    xat = Counter(xat_list).most_common(1)[0][0] if xat_list else ""
+    conf = Counter(conf_list).most_common(1)[0][0] if conf_list else ""
+    return {"til": til, "xat": xat, "conf": conf}
+
 
 # ==========================================
-# 6) RESULT RENDER (with Diagnosis highlight)
+# 7) RESULT CARD HTML (Tashxis highlight + badge)
 # ==========================================
-def _is_md_table_sep(line: str) -> bool:
-    s = line.strip()
-    if not (s.startswith("|") and s.endswith("|")):
-        return False
-    core = s.strip("|").strip()
-    return all(ch in "-: |" for ch in core) and ("-" in core)
-
 def _badge(conf: str) -> str:
     conf_l = (conf or "").lower()
     if "yuqori" in conf_l:
-        cls = "b-high"
-        label = "Yuqori ishonch"
+        cls = "b-high"; label = "Yuqori ishonch"
     elif "o‘rtacha" in conf_l or "ortacha" in conf_l:
-        cls = "b-med"
-        label = "O‘rtacha ishonch"
+        cls = "b-med"; label = "O‘rtacha ishonch"
     else:
-        cls = "b-low"
-        label = "Past ishonch"
+        cls = "b-low"; label = "Past ishonch"
     return f'<span class="badge {cls}">{html.escape(label)}</span>'
 
-def _extract_conf(md: str) -> str:
-    # tries to find "Ishonchlilik: ..."
-    m = re.search(r"Ishonchlilik\s*:\s*(.+)", md, flags=re.IGNORECASE)
-    if m:
-        return m.group(1).strip()
-    return ""
-
-def md_to_html_basic(md: str) -> str:
-    """
-    Minimal MD -> HTML, plus: if it sees a "0) Tashxis:" block at start, it wraps it in a highlight box.
-    """
+def md_to_html_with_diag(md: str) -> str:
     raw = md or ""
-    conf = _extract_conf(raw)
-
+    diag = extract_diagnosis(raw)
     safe = html.escape(raw)
     lines = safe.splitlines()
 
     out = []
     i = 0
-    para = []
-    items = []
 
-    def flush_paragraph():
-        nonlocal para
-        if para:
-            out.append("<p>" + "<br/>".join(para) + "</p>")
-            para = []
+    def is_h(nline: str) -> bool:
+        return bool(re.match(r"^\d+\)\s+", nline.strip()))
 
-    def flush_list():
-        nonlocal items
-        if items:
-            out.append("<ul>" + "".join(f"<li>{x}</li>" for x in items) + "</ul>")
-            items = []
-
-    # detect diagnosis header line
-    def is_diag(line: str) -> bool:
-        return line.strip().lower().startswith("0)") and "tashxis" in line.strip().lower()
-
+    # diagnosis block
     while i < len(lines):
         line = lines[i].rstrip()
 
-        if line.strip() == "":
-            flush_paragraph(); flush_list()
+        if line.strip().lower().startswith("0)") and "tashxis" in line.strip().lower():
+            block = [line]
             i += 1
-            continue
-
-        if line.strip() == "---":
-            flush_paragraph(); flush_list()
-            out.append("<hr/>")
-            i += 1
-            continue
-
-        # DIAGNOSIS highlight block (0) Tashxis...)
-        if is_diag(line):
-            flush_paragraph(); flush_list()
-            diag_lines = [line]
-            i += 1
-            while i < len(lines) and lines[i].strip() != "" and not re.match(r"^\d+\)\s+", lines[i].strip()):
-                diag_lines.append(lines[i].rstrip())
+            while i < len(lines) and not lines[i].strip().startswith("1)"):
+                block.append(lines[i].rstrip())
                 i += 1
 
-            badge = _badge(conf)
-            diag_html = "<br/>".join(diag_lines)
+            badge = _badge(diag.get("conf", ""))
+            block_html = "<br/>".join(block)
             out.append(f"""
               <div class="diag-box">
                 <div class="diag-head">
                   <span class="diag-title">0) Tashxis</span>
                   {badge}
                 </div>
-                <div class="diag-body">{diag_html}</div>
+                <div class="diag-body">{block_html}</div>
               </div>
             """)
             continue
 
-        if line.startswith("### "):
-            flush_paragraph(); flush_list()
-            out.append(f"<h3>{line[4:]}</h3>")
-            i += 1
-            continue
+        # headings
         if line.startswith("## "):
-            flush_paragraph(); flush_list()
             out.append(f"<h2>{line[3:]}</h2>")
             i += 1
             continue
-
-        if re.match(r"^\d+\)\s+", line.strip()):
-            flush_paragraph(); flush_list()
+        if line.startswith("### "):
+            out.append(f"<h3>{line[4:]}</h3>")
+            i += 1
+            continue
+        if is_h(line):
             out.append(f"<h3>{line.strip()}</h3>")
             i += 1
             continue
-
-        if line.strip().startswith("- "):
-            flush_paragraph()
-            items.append(line.strip()[2:])
+        if line.strip() == "---":
+            out.append("<hr/>")
+            i += 1
+            continue
+        if line.strip() == "":
+            out.append("<br/>")
             i += 1
             continue
 
-        if line.strip().startswith("|") and "|" in line.strip()[1:]:
-            flush_paragraph(); flush_list()
-            table_lines = []
-            while i < len(lines) and lines[i].strip().startswith("|"):
-                table_lines.append(lines[i].strip())
-                i += 1
-
-            cleaned = []
-            for tl in table_lines:
-                if _is_md_table_sep(tl):
-                    continue
-                cleaned.append(tl)
-
-            rows = []
-            for tl in cleaned:
-                cells = [c.strip() for c in tl.strip("|").split("|")]
-                rows.append(cells)
-
-            if rows:
-                header = rows[0]
-                body = rows[1:]
-                out.append("<table>")
-                out.append("<thead><tr>" + "".join(f"<th>{c}</th>" for c in header) + "</tr></thead>")
-                out.append("<tbody>")
-                for r in body:
-                    out.append("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>")
-                out.append("</tbody></table>")
-            continue
-
-        line = line.replace("**", "§§B§§")
-        parts = line.split("§§B§§")
-        if len(parts) > 1:
-            rebuilt = []
-            for j, p in enumerate(parts):
-                rebuilt.append(f"<strong>{p}</strong>" if j % 2 == 1 else p)
-            line = "".join(rebuilt)
-
-        para.append(line)
+        out.append(f"<p style='white-space:pre-wrap; margin:10px 0;'>{line}</p>")
         i += 1
 
-    flush_paragraph(); flush_list()
     return "\n".join(out)
 
 def render_result_card(md: str, gold: str) -> str:
-    body = md_to_html_basic(md)
+    body = md_to_html_with_diag(md)
     return f"""
     <style>
       :root {{ --gold: {gold}; }}
@@ -522,7 +477,6 @@ def render_result_card(md: str, gold: str) -> str:
         border-bottom: 2px solid var(--gold);
         padding-bottom: 8px;
       }}
-
       .diag-box {{
         border: 1px solid rgba(17, 24, 39, 0.10);
         background: linear-gradient(180deg, rgba(197,160,89,0.14), rgba(197,160,89,0.06));
@@ -553,22 +507,7 @@ def render_result_card(md: str, gold: str) -> str:
       .b-high {{ background: #dcfce7; color: #14532d; }}
       .b-med  {{ background: #fef9c3; color: #713f12; }}
       .b-low  {{ background: #fee2e2; color: #7f1d1d; }}
-
-      table {{
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
-        font-size: 14px;
-      }}
-      th, td {{
-        border: 1px solid #e5e7eb;
-        padding: 8px 10px;
-        vertical-align: top;
-      }}
-      th {{ background: #f8fafc; }}
       hr {{ border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }}
-      p {{ margin: 10px 0; }}
-      ul {{ margin: 10px 0 10px 18px; }}
     </style>
     <div class="card">
       {body}
@@ -577,7 +516,7 @@ def render_result_card(md: str, gold: str) -> str:
 
 
 # ==========================================
-# 7) WORD EXPORT (same as before, no "Model" row)
+# 8) WORD EXPORT (Til/Xat: AI aniqlaganini qo'yamiz)
 # ==========================================
 def _doc_set_normal_style(doc: Document):
     style = doc.styles["Normal"]
@@ -606,126 +545,22 @@ def _add_meta_table(doc: Document, meta: dict):
         row[0].text = str(k)
         row[1].text = str(v)
 
-def _is_md_table_sep_plain(line: str) -> bool:
-    s = line.strip()
-    if not (s.startswith("|") and s.endswith("|")):
-        return False
-    core = s.strip("|").strip()
-    return all(ch in "-: |" for ch in core) and ("-" in core)
-
-def _parse_md_table(lines: list[str], start_i: int):
-    table_lines = []
-    i = start_i
-    while i < len(lines) and lines[i].strip().startswith("|"):
-        table_lines.append(lines[i].strip())
-        i += 1
-
-    cleaned = []
-    for tl in table_lines:
-        if _is_md_table_sep_plain(tl):
-            continue
-        cleaned.append(tl)
-
-    rows = []
-    for tl in cleaned:
-        cells = [c.strip() for c in tl.strip("|").split("|")]
-        rows.append(cells)
-
-    return rows, i
-
-def add_md_content_to_doc(doc: Document, md: str):
-    md = md or ""
-    lines = md.splitlines()
-    i = 0
-    buf = []
-
-    def flush_buf():
-        nonlocal buf
-        if buf:
-            p = doc.add_paragraph()
-            for j, ln in enumerate(buf):
-                p.add_run(ln)
-                if j != len(buf) - 1:
-                    p.add_run("\n")
-            buf = []
-
-    def add_hr():
-        doc.add_paragraph("—" * 36)
-
-    while i < len(lines):
-        line = lines[i].rstrip()
-
-        if line.strip() == "":
-            flush_buf()
-            doc.add_paragraph("")
-            i += 1
-            continue
-
-        if line.strip() == "---":
-            flush_buf()
-            add_hr()
-            i += 1
-            continue
-
-        if line.startswith("## "):
-            flush_buf()
-            doc.add_heading(line[3:], level=2)
-            i += 1
-            continue
-
-        if line.startswith("### "):
-            flush_buf()
-            doc.add_heading(line[4:], level=3)
-            i += 1
-            continue
-
-        if re.match(r"^\d+\)\s+", line.strip()):
-            flush_buf()
-            doc.add_heading(line.strip(), level=3)
-            i += 1
-            continue
-
-        if line.strip().startswith("|") and "|" in line.strip()[1:]:
-            flush_buf()
-            rows, nxt = _parse_md_table(lines, i)
-            i = nxt
-            if rows:
-                cols = max(len(r) for r in rows)
-                table = doc.add_table(rows=len(rows), cols=cols)
-                table.style = "Table Grid"
-                for r_i, r in enumerate(rows):
-                    for c_i in range(cols):
-                        table.cell(r_i, c_i).text = r[c_i] if c_i < len(r) else ""
-            doc.add_paragraph("")
-            continue
-
-        if line.strip().startswith("- "):
-            flush_buf()
-            doc.add_paragraph(line.strip()[2:], style="List Bullet")
-            i += 1
-            continue
-
-        buf.append(line)
-        i += 1
-
-    flush_buf()
+def add_plain_text(doc: Document, txt: str):
+    for line in (txt or "").splitlines():
+        doc.add_paragraph(line)
 
 def build_word_report(app_name: str, meta: dict, pages: dict[int, str]) -> bytes:
     doc = Document()
     _doc_set_normal_style(doc)
 
-    _add_cover(
-        doc,
-        app_name,
-        "Akademik hisobot (AI tahlil + transliteratsiya + tarjima + izoh)"
-    )
+    _add_cover(doc, app_name, "Akademik hisobot (AI tahlil + transliteratsiya + tarjima + izoh)")
     _add_meta_table(doc, meta)
     doc.add_page_break()
 
     page_keys = sorted(pages.keys())
     for j, idx in enumerate(page_keys):
         doc.add_heading(f"Varaq {idx+1}", level=1)
-        add_md_content_to_doc(doc, pages[idx] or "")
+        add_plain_text(doc, pages[idx] or "")
         if j != len(page_keys) - 1:
             doc.add_page_break()
 
@@ -735,7 +570,7 @@ def build_word_report(app_name: str, meta: dict, pages: dict[int, str]) -> bytes
 
 
 # ==========================================
-# 8) SIDEBAR
+# 9) SIDEBAR (auth + controls)
 # ==========================================
 with st.sidebar:
     st.markdown("<h2 style='text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
@@ -745,7 +580,6 @@ with st.sidebar:
         st.caption("Kreditlardan foydalanish uchun kiring.")
         email_in = st.text_input("Email", placeholder="example@mail.com")
         pwd_in = st.text_input("Parol", type="password", placeholder="****")
-
         if st.button("KIRISH"):
             if pwd_in == st.secrets["APP_PASSWORD"]:
                 st.session_state.auth = True
@@ -766,10 +600,8 @@ with st.sidebar:
             live_credits = 0
 
         st.metric("💳 Kreditlar", f"{live_credits} sahifa")
-
         if st.session_state.warn_rpc:
             st.warning("RPC muammo: consume_credits/refund_credits ishlamayapti.")
-
         if st.button("🚪 TIZIMDAN CHIQISH"):
             st.session_state.auth = False
             st.session_state.u_email = "Mehmon"
@@ -778,8 +610,8 @@ with st.sidebar:
     st.divider()
 
     auto_detect = st.checkbox("🧠 Avto aniqlash (tavsiya)", value=True)
-    lang = st.selectbox("Taxminiy matn tili (ixtiyoriy):", ["Noma'lum", "Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"], index=0)
-    era = st.selectbox("Taxminiy xat uslubi (ixtiyoriy):", ["Noma'lum", "Nasta'liq", "Suls", "Riq'a", "Kufiy"], index=0)
+    lang = st.selectbox("Taxminiy matn tili (hint):", ["Noma'lum", "Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"], index=0)
+    era = st.selectbox("Taxminiy xat uslubi (hint):", ["Noma'lum", "Nasta'liq", "Suls", "Riq'a", "Kufiy"], index=0)
 
     st.markdown("### 🧪 Laboratoriya")
     rotate = st.select_slider("Aylantirish:", options=[0, 90, 180, 270], value=0)
@@ -792,9 +624,14 @@ with st.sidebar:
     st.markdown("### 🧭 Ko'rinish")
     view_mode = st.radio("Natija ko'rinishi:", ["Yonma-yon", "Tabs"], index=0, horizontal=True)
 
+    st.markdown("### ✨ UI Features")
+    ui_progress = st.checkbox("Top progress bar (tavsiya)", value=True)
+    ui_cta = st.checkbox("CTA card (login bo'lmaganlarga)", value=True)
+    ui_empty = st.checkbox("Empty state hero (fayl yo'q payt)", value=True)
+
 
 # ==========================================
-# 9) MAIN
+# 10) MAIN
 # ==========================================
 st.title("📜 Manuscript AI Center")
 st.markdown("<p style='text-align:center;'>Qadimiy hujjatlarni yuklang va AI yordamida tahlil qiling.</p>", unsafe_allow_html=True)
@@ -805,7 +642,45 @@ uploaded_file = st.file_uploader(
     label_visibility="collapsed"
 )
 
+# Empty state hero
+if (uploaded_file is None) and ui_empty:
+    st.markdown(f"""
+    <div style="
+      background: linear-gradient(180deg, rgba(197,160,89,0.18), rgba(255,255,255,0.04));
+      border: 1px solid rgba(197,160,89,0.40);
+      border-radius: 18px;
+      padding: 18px 18px;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.22);
+      max-width: 980px;
+      margin: 18px auto 0 auto;
+    ">
+      <div style="display:flex; gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+        <div>
+          <div style="font-size:18px; font-weight:900; color:{C["gold"]};">📜 Manuscript AI — Tez demo</div>
+          <div style="color:{C["muted"]}; margin-top:4px;">
+            1) PDF/rasm yuklang → 2) Sahifani tanlang → 3) Akademik tahlilni boshlang
+          </div>
+        </div>
+        <div style="
+          background: rgba(12,20,33,0.55);
+          border: 1px solid rgba(197,160,89,0.35);
+          border-radius: 14px;
+          padding: 10px 12px;
+          color:{C["text"]};
+          font-weight:900;
+        ">
+          ✅ Drag & drop ham ishlaydi
+        </div>
+      </div>
+      <div style="margin-top:12px; color:{C["muted"]}; font-size:14px; line-height:1.6;">
+        * Skan sifatini oshirish uchun sidebar’dagi Yorqinlik/Kontrastdan foydalaning.
+        <br/>* Katta PDF bo‘lsa, “Preview max sahifa”ni 20–30 atrofida qoldiring.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 if uploaded_file:
+    # Load/render once per file
     if st.session_state.last_fn != uploaded_file.name:
         with st.spinner("Preparing..."):
             file_bytes = uploaded_file.getvalue()
@@ -830,6 +705,7 @@ if uploaded_file:
     total_pages = len(processed_pages)
     st.caption(f"Yuklandi: **{total_pages}** sahifa (preview limit: {max_pages}).")
 
+    # Page selection UX
     if total_pages <= 30:
         selected_indices = st.multiselect(
             "Sahifalarni tanlang:",
@@ -845,6 +721,7 @@ if uploaded_file:
         selected_indices = parse_pages(page_spec, total_pages)
         st.caption("Maslahat: juda ko'p sahifani biryo'la yubormang (429 kamayadi).")
 
+    # Preview grid (faqat natija yo'q bo'lsa)
     if not st.session_state.results and selected_indices:
         cols = st.columns(min(len(selected_indices), 4))
         for i, idx in enumerate(selected_indices[:16]):
@@ -853,29 +730,80 @@ if uploaded_file:
         if len(selected_indices) > 16:
             st.info(f"Previewda faqat 16 ta ko'rsatildi. Tanlangan jami: {len(selected_indices)}.")
 
+    # CTA card (home)
+    if (not st.session_state.auth) and ui_cta:
+        st.markdown(f"""
+        <div style="
+          background: rgba(255,243,224,1);
+          border: 1px solid #ffb74d;
+          border-radius: 14px;
+          padding: 14px 14px;
+          margin: 12px 0 12px 0;
+          max-width: 980px;
+          margin-left:auto; margin-right:auto;
+        ">
+          <div style="font-weight:900; color:#e65100; font-size:16px;">
+            🔒 Word hisobot + Tahrir + AI Chat — Premium
+          </div>
+          <div style="margin-top:6px; color:#5a3a00; line-height:1.6;">
+            Demo rejimda natijani ko‘rishingiz mumkin. To‘liq funksiyalar uchun tizimga kiring.
+          </div>
+          <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+            <div style="background: rgba(12,20,33,0.10); border: 1px dashed rgba(230,81,0,0.35);
+                        border-radius: 12px; padding: 8px 10px; color:#5a3a00; font-weight:900; font-size:13px;">
+              Google bilan kirish (tez orada) ✅
+            </div>
+            <div style="color:#5a3a00; font-size:13px;">Hozircha: email + parol orqali kirish</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Run analysis
     if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
         hint_lang = "" if (auto_detect or lang == "Noma'lum") else lang
         hint_era = "" if (auto_detect or era == "Noma'lum") else era
 
-        # ✅ PRO: confidence bandini majburiy qilamiz
+        # IMPORTANT: prompt format - Til/Xat uslubi alohida satr bo'lib chiqadi (Word uchun ham)
         prompt = (
             "Siz Manuscript AI mutaxassisiz.\n"
-            "MUHIM: Foydalanuvchi tanlovi faqat HINT bo‘lishi mumkin. Uni haqiqat deb qabul qilmang.\n"
-            "Avval rasmga qarab MUSTAQIL aniqlang: til va xat uslubi, va hint bilan mos/mos emas.\n\n"
+            "MUHIM: Foydalanuvchi tanlovi faqat HINT. Uni haqiqat deb qabul qilmang.\n"
+            "Avval rasmga qarab MUSTAQIL aniqlang: til va xat uslubi.\n\n"
             f"Foydalanuvchi hintlari: til='{hint_lang or 'yo‘q'}', xat='{hint_era or 'yo‘q'}'.\n\n"
             "Format (aniq shunday):\n"
-            "0) Tashxis: aniqlangan til + xat uslubi + (hint mos/mos emas) + qisqa sabab\n"
-            "   Ishonchlilik: past | o‘rtacha | yuqori (bittasini tanlang)\n"
+            "0) Tashxis:\n"
+            "Til: <aniqlangan til>\n"
+            "Xat uslubi: <aniqlangan xat uslubi>\n"
+            "Hint mosligi: <mos | mos emas | hint yo‘q>\n"
+            "Ishonchlilik: past | o‘rtacha | yuqori\n"
+            "Sabab: <1-2 jumla>\n"
             "1) Paleografiya\n"
             "2) Transliteratsiya (satrma-satr, o‘qilganicha)\n"
             "3) Tarjima (akademik, mazmuniy)\n"
             "4) Arxaik lug'at (5–10 so‘z)\n"
-            "5) Izoh (kontekst, shaxs/joy/sana bo‘lsa ehtiyot bilan)\n\n"
+            "5) Izoh (kontekst; aniq bo‘lmasa ehtiyot bo‘l)\n\n"
             "Qoidalar:\n"
             "- O‘qilmagan joyni taxmin qilmang: [o‘qilmadi] yoki [?] bilan belgilang.\n"
             "- Ism/son/sana bo‘lsa aynan ko‘ringanicha yozing (tasdiqsiz uydirma qilmang).\n"
             "- Hech qachon inglizcha label ishlatma. Faqat o‘zbekcha yoz.\n"
         )
+
+        total = len(selected_indices)
+        done = 0
+        progress_ph = st.empty()
+        bar = st.progress(0.0) if (ui_progress and total > 0) else None
+
+        def _update_progress():
+            if bar:
+                ratio = done / max(total, 1)
+                bar.progress(ratio)
+                progress_ph.markdown(
+                    f"<div style='text-align:center; color:{C['muted']}; font-weight:900;'>"
+                    f"📈 Tahlil jarayoni: <span style='color:{C['gold']};'>{done}/{total}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+        _update_progress()
 
         for idx in selected_indices:
             reserved = False
@@ -884,8 +812,8 @@ if uploaded_file:
                     if st.session_state.auth:
                         ok = reserve_credit(st.session_state.u_email)
                         if not ok:
-                            st.warning("Kredit tugagan. Davom etish uchun kredit qo‘shing.")
                             s.update(label="Kredit yetarli emas", state="error")
+                            st.warning("Kredit tugagan. Davom etish uchun kredit qo‘shing.")
                             continue
                         reserved = True
 
@@ -906,12 +834,19 @@ if uploaded_file:
                 except Exception as e:
                     if reserved:
                         refund_credit(st.session_state.u_email)
-                    st.error(f"Xato: {e}")
                     s.update(label="Xato (refund)", state="error")
+                    st.error(f"Xato: {e}")
+
+            done += 1
+            _update_progress()
+
+        if bar:
+            bar.progress(1.0)
 
         gc.collect()
         st.rerun()
 
+    # Results area
     if st.session_state.results:
         st.divider()
         keys = sorted(st.session_state.results.keys())
@@ -935,7 +870,8 @@ if uploaded_file:
                         components.html(render_result_card(res, C["gold"]), height=580, scrolling=True)
                     with tabs[2]:
                         if not st.session_state.auth:
-                            st.markdown("<div class='premium-alert'>🔒 Tahrir/Word/Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
+                            if ui_cta:
+                                st.info("🔒 Tahrir/Word/Chat uchun tizimga kiring.")
                         else:
                             st.session_state.results[idx] = st.text_area(
                                 f"Tahrir ({idx+1}):",
@@ -945,48 +881,77 @@ if uploaded_file:
                             )
                     with tabs[3]:
                         if not st.session_state.auth:
-                            st.markdown("<div class='premium-alert'>🔒 Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
+                            if ui_cta:
+                                st.info("🔒 Chat uchun tizimga kiring.")
                         else:
                             st.session_state.chats.setdefault(idx, [])
                             for ch in st.session_state.chats[idx]:
                                 st.markdown(f"<div class='chat-user'><b>S:</b> {html.escape(ch['q'])}</div>", unsafe_allow_html=True)
                                 st.markdown(f"<div class='chat-ai'><b>AI:</b> {html.escape(ch['a'])}</div>", unsafe_allow_html=True)
+
                             user_q = st.text_input("Savol bering:", key=f"q_{idx}")
                             if st.button(f"So'rash ({idx+1})", key=f"btn_{idx}"):
                                 if user_q.strip():
                                     with st.spinner("..."):
-                                        chat_prompt = f"Doc: {st.session_state.results[idx]}\nQ: {user_q}"
+                                        chat_prompt = f"Matn: {st.session_state.results[idx]}\nSavol: {user_q}\nJavobni o‘zbekcha, aniq va qisqa yoz."
                                         chat_resp = model.generate_content([chat_prompt])
                                         st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
                                         st.rerun()
+
                 else:
+                    # ✅ Yonma-yon + Chat qaytdi (siz so‘ragan fix)
                     c1, c2 = st.columns([1, 1.35], gap="large")
                     with c1:
                         st.markdown(img_html, unsafe_allow_html=True)
                     with c2:
-                        components.html(render_result_card(res, C["gold"]), height=580, scrolling=True)
+                        components.html(render_result_card(res, C["gold"]), height=520, scrolling=True)
 
                         if not st.session_state.auth:
-                            st.markdown("<div class='premium-alert'>🔒 Tahrir/Word/Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
+                            if ui_cta:
+                                st.info("🔒 Tahrir/Word/Chat uchun tizimga kiring.")
                         else:
                             st.session_state.results[idx] = st.text_area(
                                 f"Tahrir ({idx+1}):",
                                 value=st.session_state.results[idx],
-                                height=280,
+                                height=220,
                                 key=f"ed_{idx}"
                             )
 
+                            with st.expander("💬 AI Chat (shu varaq bo‘yicha)", expanded=True):
+                                st.session_state.chats.setdefault(idx, [])
+                                for ch in st.session_state.chats[idx]:
+                                    st.markdown(f"<div class='chat-user'><b>S:</b> {html.escape(ch['q'])}</div>", unsafe_allow_html=True)
+                                    st.markdown(f"<div class='chat-ai'><b>AI:</b> {html.escape(ch['a'])}</div>", unsafe_allow_html=True)
+
+                                user_q = st.text_input("Savol bering:", key=f"q_side_{idx}")
+                                if st.button(f"So'rash (Varaq {idx+1})", key=f"btn_side_{idx}"):
+                                    if user_q.strip():
+                                        with st.spinner("..."):
+                                            chat_prompt = f"Matn: {st.session_state.results[idx]}\nSavol: {user_q}\nJavobni o‘zbekcha, aniq va qisqa yoz."
+                                            chat_resp = model.generate_content([chat_prompt])
+                                            st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
+                                            st.rerun()
+
+        # Word Export (meta: AI aniqlagan til/xat)
         if st.session_state.auth and st.session_state.results:
+            detected = aggregate_detected_meta(st.session_state.results)
+
             meta = {
                 "Hujjat nomi": st.session_state.last_fn,
+                "Til (aniqlangan)": detected["til"] or "Noma'lum",
+                "Xat uslubi (aniqlangan)": detected["xat"] or "Noma'lum",
+                "Avto aniqlash": "Ha" if auto_detect else "Yo‘q",
                 "Til (hint)": lang,
                 "Xat uslubi (hint)": era,
-                "Avto aniqlash": "Ha" if auto_detect else "Yo‘q",
                 "Eksport qilingan sahifalar": ", ".join(str(i+1) for i in sorted(st.session_state.results.keys())),
                 "Yaratilgan vaqt": datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
+
             report_bytes = build_word_report("Manuscript AI", meta, st.session_state.results)
-            st.download_button("📥 WORD HISOBOTNI YUKLAB OLISH (.docx)", report_bytes, file_name="Manuscript_AI_Report.docx")
+            st.download_button(
+                "📥 WORD HISOBOTNI YUKLAB OLISH (.docx)",
+                report_bytes,
+                file_name="Manuscript_AI_Report.docx"
+            )
 
 gc.collect()
-
