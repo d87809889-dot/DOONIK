@@ -620,3 +620,4 @@ if uploaded_file:
             st.download_button("📥 DOWNLOAD REPORT (.docx)", report_bytes, file_name="Manuscript_AI_Report.docx")
 
 gc.collect()
+
