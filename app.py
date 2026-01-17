@@ -989,3 +989,4 @@ if uploaded_file:
             st.download_button("📥 WORD HISOBOTNI YUKLAB OLISH (.docx)", report_bytes, file_name="Manuscript_AI_Report.docx")
 
 gc.collect()
+
