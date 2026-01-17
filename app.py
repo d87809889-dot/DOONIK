@@ -60,7 +60,7 @@ THEMES = {
 C = THEMES.get(THEME, THEMES["DARK_GOLD"])
 
 # ==========================================
-# 1.1 PROFESSIONAL UI (FIXED CONTRAST + NO WHITE GAP + STICKY IMAGE)
+# 1.1 PROFESSIONAL UI (contrast + no white gap + scrollable result + mobile tabs)
 # ==========================================
 st.markdown(f"""
 <style>
@@ -76,7 +76,6 @@ st.markdown(f"""
   --card-text: {C["card_text"]};
 }}
 
-/* --- White gap fix (scroll pastga tushganda oq bo'shliq chiqmasin) --- */
 html, body {{
   background: var(--app-bg) !important;
   margin: 0 !important;
@@ -86,28 +85,20 @@ html, body {{
   background: var(--app-bg) !important;
   min-height: 100vh !important;
 }}
-/* Container paddings (ortiqcha past bo'shliqni kamaytirish) */
 div[data-testid="stAppViewContainer"] .main .block-container {{
   padding-top: 3.25rem !important;
   padding-bottom: 1.25rem !important;
 }}
 
-/* Streamlit reklama/branding elementlari */
 footer {{visibility: hidden !important;}}
 .stAppDeployButton {{display:none !important;}}
 #stDecoration {{display:none !important;}}
+header[data-testid="stHeader"] {{ background: rgba(0,0,0,0) !important; }}
 
-/* Header transparent, lekin matn kontrastli */
-header[data-testid="stHeader"] {{
-  background: rgba(0,0,0,0) !important;
-}}
-
-/* Sidebar */
 section[data-testid="stSidebar"] {{
   background: var(--sidebar-bg) !important;
   border-right: 2px solid var(--gold) !important;
 }}
-/* Sidebar ichidagi matnlar ko'rinmay qolmasin */
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3,
@@ -117,12 +108,10 @@ section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] span {{
   color: var(--text) !important;
 }}
-/* Sidebar caption */
 section[data-testid="stSidebar"] .stCaption {{
   color: var(--muted) !important;
 }}
 
-/* Main title & headings: 2-rasmda ko'rinmay qolgan joyni tuzatadi */
 h1, h2, h3, h4 {{
   color: var(--gold) !important;
   font-family: 'Georgia', serif;
@@ -130,12 +119,8 @@ h1, h2, h3, h4 {{
   padding-bottom: 8px !important;
   text-align: center !important;
 }}
-/* Subtitle */
-.stMarkdown p {{
-  color: var(--muted) !important;
-}}
+.stMarkdown p {{ color: var(--muted) !important; }}
 
-/* Buttons (ko'proq jalb qiladigan) */
 .stButton>button {{
   background: linear-gradient(135deg, var(--sidebar-bg) 0%, #1e3a8a 100%) !important;
   color: var(--gold) !important;
@@ -151,31 +136,28 @@ h1, h2, h3, h4 {{
   filter: brightness(1.05);
 }}
 
-/* Inputs kontrast */
 .stTextInput input, .stSelectbox select, .stTextArea textarea {{
   background-color: rgba(255,255,255,0.06) !important;
   color: var(--text) !important;
   border: 1px solid rgba(197,160,89,0.55) !important;
   border-radius: 10px !important;
 }}
-.stTextArea textarea {{
-  background-color: rgba(255,255,255,0.06) !important;
-  color: var(--text) !important;
-}}
 
-/* Result card */
 .result-box {{
   background-color: var(--card) !important;
-  padding: 20px !important;
+  padding: 18px !important;
   border-radius: 16px !important;
   border-left: 10px solid var(--gold) !important;
   box-shadow: 0 10px 30px rgba(0,0,0,0.18) !important;
   color: var(--card-text) !important;
   font-size: 16px;
   line-height: 1.75;
+
+  /* ✅ SCROLL: matn uzun bo'lsa faqat shu joy scroll bo'ladi */
+  max-height: 520px;
+  overflow-y: auto;
 }}
 
-/* Premium alert */
 .premium-alert {{
   background: rgba(255,243,224,1);
   border: 1px solid #ffb74d;
@@ -187,7 +169,16 @@ h1, h2, h3, h4 {{
   margin-bottom: 12px;
 }}
 
-/* Sticky image (2-rasmdagi chap bo'sh maydon muammosini UX bilan yo'qotadi) */
+.chat-user {{
+  background-color: #e2e8f0; color: #000; padding: 10px; border-radius: 10px;
+  border-left: 5px solid #1e3a8a; margin-bottom: 6px;
+}}
+.chat-ai {{
+  background-color: #ffffff; color: #1a1a1a; padding: 10px; border-radius: 10px;
+  border: 1px solid #d4af37; margin-bottom: 14px;
+}}
+
+/* ✅ IMAGE: cho'zilmasin, proportsiya saqlansin */
 .sticky-preview {{
   position: sticky;
   top: 4.6rem;
@@ -196,25 +187,48 @@ h1, h2, h3, h4 {{
   overflow: hidden;
   box-shadow: 0 14px 35px rgba(0,0,0,0.22);
   background: rgba(0,0,0,0.15);
+
+  max-height: 520px;
 }}
 .sticky-preview img {{
   width: 100%;
-  height: auto;
+  height: 520px;           /* rasm blok balandligi bir xil */
+  object-fit: contain;     /* ✅ cho'zilmaydi */
   display: block;
   transition: transform .25s ease;
 }}
 .sticky-preview:hover img {{
-  transform: scale(2.05);
+  transform: scale(1.6);
   transform-origin: center;
   cursor: zoom-in;
 }}
 
+/* ✅ Desktop/Mobile layout toggles */
+.desktop-only {{ display: block; }}
+.mobile-only {{ display: none; }}
+
 /* Mobil optimizatsiya */
 @media (max-width: 768px) {{
+  .desktop-only {{ display: none; }}
+  .mobile-only {{ display: block; }}
+
   div[data-testid="stAppViewContainer"] .main .block-container {{
     padding-top: 3.5rem !important;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
+  }}
+
+  .result-box {{
+    max-height: 58vh;   /* telefonda qulay */
+  }}
+
+  .sticky-preview {{
+    position: relative;
+    top: 0;
+    max-height: 48vh;
+  }}
+  .sticky-preview img {{
+    height: 48vh;
   }}
 }}
 </style>
@@ -229,7 +243,7 @@ def get_db():
 
 db = get_db()
 
-# MODELNI O'ZGARTIRMAYMIZ (sizning talabingiz)
+# ✅ MODELNI O'ZGARTIRMAYMIZ (sizning talabingiz)
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel(model_name='gemini-flash-latest')
 
@@ -305,7 +319,7 @@ if uploaded_file:
 
     processed_imgs = []
     for img in st.session_state.imgs:
-        img = ImageOps.exif_transpose(img)  # rotation / exif fix (muammo kamayadi)
+        img = ImageOps.exif_transpose(img)  # ✅ rotation/exif fix
         p_img = ImageEnhance.Brightness(img).enhance(brightness)
         p_img = ImageEnhance.Contrast(p_img).enhance(contrast)
         processed_imgs.append(p_img)
@@ -317,9 +331,8 @@ if uploaded_file:
         format_func=lambda x: f"{x+1}-sahifa"
     )
 
-    # Preview (tahlildan oldin)
-    if not st.session_state.results:
-        cols = st.columns(min(len(selected_indices), 4) if selected_indices else 1)
+    if not st.session_state.results and selected_indices:
+        cols = st.columns(min(len(selected_indices), 4))
         for i, idx in enumerate(selected_indices):
             with cols[i % min(len(cols), 4)]:
                 st.image(processed_imgs[idx], caption=f"Varaq {idx+1}", use_container_width=True)
@@ -348,54 +361,97 @@ if uploaded_file:
                     st.error(f"Xato: {e}")
         st.rerun()
 
-    # --- NATIJALAR ---
+    # --- NATIJALAR (✅ ko'p sahifali PDF uchun expander) ---
     if st.session_state.results:
         st.divider()
         final_doc = ""
 
         for idx in sorted(st.session_state.results.keys()):
-            st.markdown(f"#### 📖 Varaq {idx+1}")
-            res = st.session_state.results[idx]
+            with st.expander(f"📖 Varaq {idx+1}", expanded=(idx == sorted(st.session_state.results.keys())[0])):
+                res = st.session_state.results[idx]
 
-            c1, c2 = st.columns([1, 1.35], gap="large")
-
-            with c1:
-                # Sticky + magnifier ishlashi uchun HTML img qo'yamiz (layoutni ham chiroyli qiladi)
+                # image to base64 (1 marta)
                 b = io.BytesIO()
                 processed_imgs[idx].save(b, format="JPEG", quality=90)
                 b64 = base64.b64encode(b.getvalue()).decode("utf-8")
-                st.markdown(
-                    f"""
-                    <div class="sticky-preview">
-                        <img src="data:image/jpeg;base64,{b64}" alt="page {idx+1}" />
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
 
-            with c2:
-                st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
+                # -------- DESKTOP: side-by-side
+                st.markdown("<div class='desktop-only'>", unsafe_allow_html=True)
+                c1, c2 = st.columns([1, 1.35], gap="large")
 
-                if not st.session_state.auth:
-                    st.markdown("<div class='premium-alert'>🔒 Word hisobotni yuklab olish va AI Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
-                else:
-                    st.session_state.results[idx] = st.text_area(f"Tahrir ({idx+1}):", value=res, height=350, key=f"ed_{idx}")
-                    final_doc += f"\n\n--- PAGE {idx+1} ---\n{st.session_state.results[idx]}"
+                with c1:
+                    st.markdown(
+                        f"""
+                        <div class="sticky-preview">
+                            <img src="data:image/jpeg;base64,{b64}" alt="page {idx+1}" />
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
-                    st.session_state.chats.setdefault(idx, [])
-                    for ch in st.session_state.chats[idx]:
-                        st.markdown(f"<div class='chat-user'><b>S:</b> {ch['q']}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='chat-ai' style='color:black;'><b>AI:</b> {ch['a']}</div>", unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
 
-                    user_q = st.text_input("Savol bering:", key=f"q_in_{idx}")
-                    if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
-                        if user_q:
-                            with st.spinner("..."):
-                                chat_res = model.generate_content([f"Doc: {st.session_state.results[idx]}\nQ: {user_q}"])
-                                st.session_state.chats[idx].append({"q": user_q, "a": chat_res.text})
-                                st.rerun()
+                    if not st.session_state.auth:
+                        st.markdown("<div class='premium-alert'>🔒 Word hisobotni yuklab olish va AI Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
+                    else:
+                        st.session_state.results[idx] = st.text_area(f"Tahrir ({idx+1}):", value=res, height=260, key=f"ed_{idx}")
+                        final_doc += f"\n\n--- PAGE {idx+1} ---\n{st.session_state.results[idx]}"
 
-            st.markdown("---")
+                        st.session_state.chats.setdefault(idx, [])
+                        for ch in st.session_state.chats[idx]:
+                            st.markdown(f"<div class='chat-user'><b>S:</b> {ch['q']}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='chat-ai' style='color:black;'><b>AI:</b> {ch['a']}</div>", unsafe_allow_html=True)
+
+                        user_q = st.text_input("Savol bering:", key=f"q_in_{idx}")
+                        if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
+                            if user_q:
+                                with st.spinner("..."):
+                                    chat_res = model.generate_content([f"Doc: {st.session_state.results[idx]}\nQ: {user_q}"])
+                                    st.session_state.chats[idx].append({"q": user_q, "a": chat_res.text})
+                                    st.rerun()
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                # -------- MOBILE: Tabs (Rasm | Natija | Chat)
+                st.markdown("<div class='mobile-only'>", unsafe_allow_html=True)
+                tabs = st.tabs(["📷 Rasm", "📝 Natija", "💬 Chat"])
+
+                with tabs[0]:
+                    st.markdown(
+                        f"""
+                        <div class="sticky-preview">
+                            <img src="data:image/jpeg;base64,{b64}" alt="page {idx+1}" />
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                with tabs[1]:
+                    st.markdown(f"<div class='result-box'>{st.session_state.results.get(idx, res)}</div>", unsafe_allow_html=True)
+
+                    if st.session_state.auth:
+                        st.session_state.results[idx] = st.text_area(f"Tahrir ({idx+1}):", value=st.session_state.results.get(idx, res), height=240, key=f"ed_m_{idx}")
+                        final_doc += f"\n\n--- PAGE {idx+1} ---\n{st.session_state.results[idx]}"
+
+                with tabs[2]:
+                    if not st.session_state.auth:
+                        st.markdown("<div class='premium-alert'>🔒 Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
+                    else:
+                        st.session_state.chats.setdefault(idx, [])
+                        for ch in st.session_state.chats[idx]:
+                            st.markdown(f"<div class='chat-user'><b>S:</b> {ch['q']}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='chat-ai' style='color:black;'><b>AI:</b> {ch['a']}</div>", unsafe_allow_html=True)
+
+                        user_q_m = st.text_input("Savol bering:", key=f"q_in_m_{idx}")
+                        if st.button(f"So'rash {idx+1}", key=f"btn_m_{idx}"):
+                            if user_q_m:
+                                with st.spinner("..."):
+                                    chat_res = model.generate_content([f"Doc: {st.session_state.results[idx]}\nQ: {user_q_m}"])
+                                    st.session_state.chats[idx].append({"q": user_q_m, "a": chat_res.text})
+                                    st.rerun()
+
+                st.markdown("</div>", unsafe_allow_html=True)
 
         if st.session_state.auth and final_doc:
             doc = Document()
