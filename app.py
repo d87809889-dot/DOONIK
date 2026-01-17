@@ -67,7 +67,7 @@ C = THEMES.get(THEME, THEMES["DARK_GOLD"])
 
 
 # ==========================================
-# 2) CSS (Fix + Pro animations)
+# 2) CSS (Pro + Fix + Diagnosis highlight)
 # ==========================================
 st.markdown(f"""
 <style>
@@ -79,8 +79,6 @@ st.markdown(f"""
   --muted: {C["muted"]};
   --gold: {C["gold"]};
   --gold2: {C["gold2"]};
-  --card: {C["card"]};
-  --card-text: {C["card_text"]};
 }}
 
 html, body {{
@@ -102,19 +100,13 @@ footer {{visibility: hidden !important;}}
 #stDecoration {{display:none !important;}}
 header[data-testid="stHeader"] {{ background: rgba(0,0,0,0) !important; }}
 
-/* Sidebar */
 section[data-testid="stSidebar"] {{
   background: var(--sidebar-bg) !important;
   border-right: 2px solid var(--gold) !important;
 }}
-section[data-testid="stSidebar"] * {{
-  color: var(--text) !important;
-}}
-section[data-testid="stSidebar"] .stCaption {{
-  color: var(--muted) !important;
-}}
+section[data-testid="stSidebar"] * {{ color: var(--text) !important; }}
+section[data-testid="stSidebar"] .stCaption {{ color: var(--muted) !important; }}
 
-/* Headings */
 h1, h2, h3, h4 {{
   color: var(--gold) !important;
   font-family: 'Georgia', serif;
@@ -123,11 +115,8 @@ h1, h2, h3, h4 {{
   text-align: center !important;
   text-shadow: 0 1px 1px rgba(0,0,0,0.35);
 }}
-.stMarkdown p {{
-  color: var(--muted) !important;
-}}
+.stMarkdown p {{ color: var(--muted) !important; }}
 
-/* Buttons */
 .stButton>button {{
   background: linear-gradient(135deg, var(--sidebar-bg) 0%, #1e3a8a 100%) !important;
   color: var(--gold) !important;
@@ -145,14 +134,13 @@ h1, h2, h3, h4 {{
   box-shadow: 0 14px 28px rgba(0,0,0,0.32) !important;
 }}
 
-/* Inputs */
 .stTextInput input, .stSelectbox select {{
   background-color: rgba(255,255,255,0.06) !important;
   color: var(--text) !important;
   border: 1px solid rgba(197,160,89,0.55) !important;
   border-radius: 10px !important;
 }}
-/* Editor always readable */
+
 .stTextArea textarea {{
   background-color: #fdfaf1 !important;
   color: #000000 !important;
@@ -160,7 +148,6 @@ h1, h2, h3, h4 {{
   border-radius: 10px !important;
 }}
 
-/* Premium alert */
 .premium-alert {{
   background: rgba(255,243,224,1);
   border: 1px solid #ffb74d;
@@ -172,7 +159,6 @@ h1, h2, h3, h4 {{
   margin-bottom: 12px;
 }}
 
-/* Chat bubbles */
 .chat-user {{
   background-color: #e2e8f0; color: #000; padding: 10px; border-radius: 10px;
   border-left: 5px solid #1e3a8a; margin-bottom: 6px;
@@ -182,7 +168,6 @@ h1, h2, h3, h4 {{
   border: 1px solid #d4af37; margin-bottom: 14px;
 }}
 
-/* Sticky image (never stretch) */
 .sticky-preview {{
   position: sticky;
   top: 4.6rem;
@@ -206,16 +191,13 @@ h1, h2, h3, h4 {{
   transform-origin: center;
   cursor: zoom-in;
 }}
-
 @keyframes fadeUp {{
   from {{ opacity: 0; transform: translateY(10px); }}
   to   {{ opacity: 1; transform: translateY(0); }}
 }}
-
 @media (prefers-reduced-motion: reduce) {{
   * {{ animation: none !important; transition: none !important; }}
 }}
-
 @media (max-width: 768px) {{
   div[data-testid="stAppViewContainer"] .main .block-container {{
     padding-top: 3.5rem !important;
@@ -238,9 +220,8 @@ def get_db():
 
 db = get_db()
 
-# ✅ MODELNI O'ZGARTIRMAYMIZ
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel(model_name="gemini-flash-latest")
+model = genai.GenerativeModel(model_name="gemini-flash-latest")  # o'zgarmaydi
 
 
 # ==========================================
@@ -253,12 +234,11 @@ if "last_fn" not in st.session_state: st.session_state.last_fn = None
 if "page_bytes" not in st.session_state: st.session_state.page_bytes = []
 if "results" not in st.session_state: st.session_state.results = {}
 if "chats" not in st.session_state: st.session_state.chats = {}
-
 if "warn_rpc" not in st.session_state: st.session_state.warn_rpc = False
 
 
 # ==========================================
-# 5) HELPERS (bytes-cache safe)
+# 5) HELPERS
 # ==========================================
 def pil_to_jpeg_bytes(img: Image.Image, quality: int = 88, max_side: int = 2400) -> bytes:
     img = img.convert("RGB")
@@ -329,118 +309,149 @@ def call_gemini_with_retry(prompt: str, payload: dict, tries: int = 4) -> str:
         except Exception as e:
             last_err = e
             msg = str(e).lower()
-            if ("429" in msg) or ("rate" in msg) or ("resource" in msg) or ("quota" in msg):
+            if ("429" in msg) or ("rate" in msg) or ("quota" in msg) or ("resource" in msg):
                 time.sleep((2 ** i) + random.random())
                 continue
             raise
     raise RuntimeError("Juda ko'p so'rov (429). Birozdan keyin qayta urinib ko'ring.") from last_err
 
-def consume_credit(email: str) -> None:
-    """
-    1) Agar DB'da consume_credits() bo'lsa => race-proof
-    2) Bo'lmasa => fallback (race-proof emas) + warning
-    """
+def reserve_credit(email: str) -> bool:
     try:
-        db.rpc("consume_credits", {"p_email": email, "p_n": 1}).execute()
-        return
+        r = db.rpc("consume_credits", {"p_email": email, "p_n": 1}).execute()
+        return bool(r.data)
     except Exception:
-        try:
-            res = db.table("profiles").select("credits").eq("email", email).single().execute()
-            live = int(res.data["credits"]) if res.data else 0
-        except Exception:
-            live = 0
-        try:
-            db.table("profiles").update({"credits": max(live - 1, 0)}).eq("email", email).execute()
-        except Exception:
-            pass
         st.session_state.warn_rpc = True
+        return False
+
+def refund_credit(email: str) -> None:
+    try:
+        db.rpc("refund_credits", {"p_email": email, "p_n": 1}).execute()
+    except Exception:
+        pass
 
 
 # ==========================================
-# 6) RESULT RENDER (fix: tables/headings inside card)
+# 6) RESULT RENDER (with Diagnosis highlight)
 # ==========================================
 def _is_md_table_sep(line: str) -> bool:
     s = line.strip()
     if not (s.startswith("|") and s.endswith("|")):
         return False
     core = s.strip("|").strip()
-    # only dashes/colons/spaces/pipes
     return all(ch in "-: |" for ch in core) and ("-" in core)
+
+def _badge(conf: str) -> str:
+    conf_l = (conf or "").lower()
+    if "yuqori" in conf_l:
+        cls = "b-high"
+        label = "Yuqori ishonch"
+    elif "o‘rtacha" in conf_l or "ortacha" in conf_l:
+        cls = "b-med"
+        label = "O‘rtacha ishonch"
+    else:
+        cls = "b-low"
+        label = "Past ishonch"
+    return f'<span class="badge {cls}">{html.escape(label)}</span>'
+
+def _extract_conf(md: str) -> str:
+    # tries to find "Ishonchlilik: ..."
+    m = re.search(r"Ishonchlilik\s*:\s*(.+)", md, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return ""
 
 def md_to_html_basic(md: str) -> str:
     """
-    Minimal MD -> HTML:
-    - headings: '##', '###', and '1) ...' style
-    - tables: |a|b| blocks
-    - bullet lists: '- ...'
-    - paragraphs + line breaks
-    All content is HTML-escaped for safety.
+    Minimal MD -> HTML, plus: if it sees a "0) Tashxis:" block at start, it wraps it in a highlight box.
     """
-    s = html.escape(md or "")
-    lines = s.splitlines()
+    raw = md or ""
+    conf = _extract_conf(raw)
+
+    safe = html.escape(raw)
+    lines = safe.splitlines()
+
     out = []
     i = 0
-
-    def flush_paragraph(buf):
-        if buf:
-            out.append("<p>" + "<br/>".join(buf) + "</p>")
-            buf.clear()
-
-    def flush_list(items):
-        if items:
-            out.append("<ul>" + "".join(f"<li>{x}</li>" for x in items) + "</ul>")
-            items.clear()
-
     para = []
     items = []
+
+    def flush_paragraph():
+        nonlocal para
+        if para:
+            out.append("<p>" + "<br/>".join(para) + "</p>")
+            para = []
+
+    def flush_list():
+        nonlocal items
+        if items:
+            out.append("<ul>" + "".join(f"<li>{x}</li>" for x in items) + "</ul>")
+            items = []
+
+    # detect diagnosis header line
+    def is_diag(line: str) -> bool:
+        return line.strip().lower().startswith("0)") and "tashxis" in line.strip().lower()
 
     while i < len(lines):
         line = lines[i].rstrip()
 
-        # empty line
         if line.strip() == "":
-            flush_paragraph(para)
-            flush_list(items)
+            flush_paragraph(); flush_list()
             i += 1
             continue
 
-        # HR
         if line.strip() == "---":
-            flush_paragraph(para)
-            flush_list(items)
+            flush_paragraph(); flush_list()
             out.append("<hr/>")
             i += 1
             continue
 
-        # headings
+        # DIAGNOSIS highlight block (0) Tashxis...)
+        if is_diag(line):
+            flush_paragraph(); flush_list()
+            diag_lines = [line]
+            i += 1
+            while i < len(lines) and lines[i].strip() != "" and not re.match(r"^\d+\)\s+", lines[i].strip()):
+                diag_lines.append(lines[i].rstrip())
+                i += 1
+
+            badge = _badge(conf)
+            diag_html = "<br/>".join(diag_lines)
+            out.append(f"""
+              <div class="diag-box">
+                <div class="diag-head">
+                  <span class="diag-title">0) Tashxis</span>
+                  {badge}
+                </div>
+                <div class="diag-body">{diag_html}</div>
+              </div>
+            """)
+            continue
+
         if line.startswith("### "):
-            flush_paragraph(para); flush_list(items)
+            flush_paragraph(); flush_list()
             out.append(f"<h3>{line[4:]}</h3>")
             i += 1
             continue
         if line.startswith("## "):
-            flush_paragraph(para); flush_list(items)
+            flush_paragraph(); flush_list()
             out.append(f"<h2>{line[3:]}</h2>")
             i += 1
             continue
 
-        # "1) Paleografiya" style -> h3
         if re.match(r"^\d+\)\s+", line.strip()):
-            flush_paragraph(para); flush_list(items)
+            flush_paragraph(); flush_list()
             out.append(f"<h3>{line.strip()}</h3>")
             i += 1
             continue
 
-        # list item
         if line.strip().startswith("- "):
-            flush_paragraph(para)
+            flush_paragraph()
             items.append(line.strip()[2:])
             i += 1
             continue
 
-        # table block
         if line.strip().startswith("|") and "|" in line.strip()[1:]:
-            flush_paragraph(para); flush_list(items)
+            flush_paragraph(); flush_list()
             table_lines = []
             while i < len(lines) and lines[i].strip().startswith("|"):
                 table_lines.append(lines[i].strip())
@@ -468,7 +479,6 @@ def md_to_html_basic(md: str) -> str:
                 out.append("</tbody></table>")
             continue
 
-        # bold **x** (simple)
         line = line.replace("**", "§§B§§")
         parts = line.split("§§B§§")
         if len(parts) > 1:
@@ -480,13 +490,11 @@ def md_to_html_basic(md: str) -> str:
         para.append(line)
         i += 1
 
-    flush_paragraph(para)
-    flush_list(items)
+    flush_paragraph(); flush_list()
     return "\n".join(out)
 
 def render_result_card(md: str, gold: str) -> str:
     body = md_to_html_basic(md)
-    # iframe content: own CSS (pro look + small animation)
     return f"""
     <style>
       :root {{ --gold: {gold}; }}
@@ -514,6 +522,38 @@ def render_result_card(md: str, gold: str) -> str:
         border-bottom: 2px solid var(--gold);
         padding-bottom: 8px;
       }}
+
+      .diag-box {{
+        border: 1px solid rgba(17, 24, 39, 0.10);
+        background: linear-gradient(180deg, rgba(197,160,89,0.14), rgba(197,160,89,0.06));
+        border-radius: 14px;
+        padding: 12px 12px;
+        margin: 6px 0 14px 0;
+      }}
+      .diag-head {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+      }}
+      .diag-title {{
+        font-weight: 900;
+        color: #1f2937;
+      }}
+      .badge {{
+        font-size: 12px;
+        font-weight: 900;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(0,0,0,0.08);
+        box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+        white-space: nowrap;
+      }}
+      .b-high {{ background: #dcfce7; color: #14532d; }}
+      .b-med  {{ background: #fef9c3; color: #713f12; }}
+      .b-low  {{ background: #fee2e2; color: #7f1d1d; }}
+
       table {{
         width: 100%;
         border-collapse: collapse;
@@ -537,7 +577,7 @@ def render_result_card(md: str, gold: str) -> str:
 
 
 # ==========================================
-# 7) WORD EXPORT (world-standard + tables)
+# 7) WORD EXPORT (same as before, no "Model" row)
 # ==========================================
 def _doc_set_normal_style(doc: Document):
     style = doc.styles["Normal"]
@@ -566,8 +606,14 @@ def _add_meta_table(doc: Document, meta: dict):
         row[0].text = str(k)
         row[1].text = str(v)
 
+def _is_md_table_sep_plain(line: str) -> bool:
+    s = line.strip()
+    if not (s.startswith("|") and s.endswith("|")):
+        return False
+    core = s.strip("|").strip()
+    return all(ch in "-: |" for ch in core) and ("-" in core)
+
 def _parse_md_table(lines: list[str], start_i: int):
-    """Return (rows, next_i). rows is list[list[str]]."""
     table_lines = []
     i = start_i
     while i < len(lines) and lines[i].strip().startswith("|"):
@@ -576,7 +622,7 @@ def _parse_md_table(lines: list[str], start_i: int):
 
     cleaned = []
     for tl in table_lines:
-        if _is_md_table_sep(tl):
+        if _is_md_table_sep_plain(tl):
             continue
         cleaned.append(tl)
 
@@ -588,34 +634,23 @@ def _parse_md_table(lines: list[str], start_i: int):
     return rows, i
 
 def add_md_content_to_doc(doc: Document, md: str):
-    """
-    Minimal MD parser for docx:
-    - '##' => heading level 2
-    - '###' or '1) ...' => heading level 3
-    - tables => real Word table
-    - '---' => separator line (paragraph)
-    - other lines => paragraphs (preserve newlines)
-    """
     md = md or ""
     lines = md.splitlines()
     i = 0
-
-    def add_hr():
-        doc.add_paragraph("—" * 36)
-
-    # paragraph buffer
     buf = []
 
     def flush_buf():
         nonlocal buf
         if buf:
-            # keep line breaks as separate lines in paragraph
             p = doc.add_paragraph()
             for j, ln in enumerate(buf):
                 p.add_run(ln)
                 if j != len(buf) - 1:
                     p.add_run("\n")
             buf = []
+
+    def add_hr():
+        doc.add_paragraph("—" * 36)
 
     while i < len(lines):
         line = lines[i].rstrip()
@@ -664,7 +699,6 @@ def add_md_content_to_doc(doc: Document, md: str):
             doc.add_paragraph("")
             continue
 
-        # list items
         if line.strip().startswith("- "):
             flush_buf()
             doc.add_paragraph(line.strip()[2:], style="List Bullet")
@@ -685,7 +719,6 @@ def build_word_report(app_name: str, meta: dict, pages: dict[int, str]) -> bytes
         app_name,
         "Akademik hisobot (AI tahlil + transliteratsiya + tarjima + izoh)"
     )
-
     _add_meta_table(doc, meta)
     doc.add_page_break()
 
@@ -712,10 +745,15 @@ with st.sidebar:
         st.caption("Kreditlardan foydalanish uchun kiring.")
         email_in = st.text_input("Email", placeholder="example@mail.com")
         pwd_in = st.text_input("Parol", type="password", placeholder="****")
+
         if st.button("KIRISH"):
             if pwd_in == st.secrets["APP_PASSWORD"]:
                 st.session_state.auth = True
                 st.session_state.u_email = (email_in or "demo@mail.com").strip()
+                try:
+                    db.table("profiles").insert({"email": st.session_state.u_email, "credits": 10}).execute()
+                except Exception:
+                    pass
                 st.rerun()
             else:
                 st.error("Xato parol!")
@@ -723,14 +761,14 @@ with st.sidebar:
         st.write(f"👤 **Foydalanuvchi:** `{st.session_state.u_email}`")
         try:
             res = db.table("profiles").select("credits").eq("email", st.session_state.u_email).single().execute()
-            live_credits = res.data["credits"] if res.data else 0
+            live_credits = int(res.data["credits"]) if res.data else 0
         except Exception:
             live_credits = 0
 
         st.metric("💳 Kreditlar", f"{live_credits} sahifa")
 
         if st.session_state.warn_rpc:
-            st.warning("Eslatma: consume_credits() RPC topilmadi. Kredit yechish fallback rejimda (race-proof emas).")
+            st.warning("RPC muammo: consume_credits/refund_credits ishlamayapti.")
 
         if st.button("🚪 TIZIMDAN CHIQISH"):
             st.session_state.auth = False
@@ -738,8 +776,10 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
-    lang = st.selectbox("Asl matn tili:", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
-    era = st.selectbox("Xat uslubi:", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+
+    auto_detect = st.checkbox("🧠 Avto aniqlash (tavsiya)", value=True)
+    lang = st.selectbox("Taxminiy matn tili (ixtiyoriy):", ["Noma'lum", "Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"], index=0)
+    era = st.selectbox("Taxminiy xat uslubi (ixtiyoriy):", ["Noma'lum", "Nasta'liq", "Suls", "Riq'a", "Kufiy"], index=0)
 
     st.markdown("### 🧪 Laboratoriya")
     rotate = st.select_slider("Aylantirish:", options=[0, 90, 180, 270], value=0)
@@ -766,7 +806,6 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    # load new file
     if st.session_state.last_fn != uploaded_file.name:
         with st.spinner("Preparing..."):
             file_bytes = uploaded_file.getvalue()
@@ -783,7 +822,6 @@ if uploaded_file:
             st.session_state.warn_rpc = False
             gc.collect()
 
-    # preprocess pages (cached)
     processed_pages = [
         preprocess_bytes(b, brightness=brightness, contrast=contrast, rotate=rotate)
         for b in st.session_state.page_bytes
@@ -792,7 +830,6 @@ if uploaded_file:
     total_pages = len(processed_pages)
     st.caption(f"Yuklandi: **{total_pages}** sahifa (preview limit: {max_pages}).")
 
-    # selection UX
     if total_pages <= 30:
         selected_indices = st.multiselect(
             "Sahifalarni tanlang:",
@@ -808,7 +845,6 @@ if uploaded_file:
         selected_indices = parse_pages(page_spec, total_pages)
         st.caption("Maslahat: juda ko'p sahifani biryo'la yubormang (429 kamayadi).")
 
-    # preview thumbnails
     if not st.session_state.results and selected_indices:
         cols = st.columns(min(len(selected_indices), 4))
         for i, idx in enumerate(selected_indices[:16]):
@@ -817,45 +853,73 @@ if uploaded_file:
         if len(selected_indices) > 16:
             st.info(f"Previewda faqat 16 ta ko'rsatildi. Tanlangan jami: {len(selected_indices)}.")
 
-    # analyze
     if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
+        hint_lang = "" if (auto_detect or lang == "Noma'lum") else lang
+        hint_era = "" if (auto_detect or era == "Noma'lum") else era
+
+        # ✅ PRO: confidence bandini majburiy qilamiz
         prompt = (
-            f"Siz Manuscript AI mutaxassisiz. {lang} va {era} uslubidagi manbani tahlil qiling:\n"
-            "1) Paleografiya\n2) Transliteratsiya (satrma-satr)\n3) Tarjima (akademik)\n4) Arxaik lug'at\n5) Izoh\n\n"
+            "Siz Manuscript AI mutaxassisiz.\n"
+            "MUHIM: Foydalanuvchi tanlovi faqat HINT bo‘lishi mumkin. Uni haqiqat deb qabul qilmang.\n"
+            "Avval rasmga qarab MUSTAQIL aniqlang: til va xat uslubi, va hint bilan mos/mos emas.\n\n"
+            f"Foydalanuvchi hintlari: til='{hint_lang or 'yo‘q'}', xat='{hint_era or 'yo‘q'}'.\n\n"
+            "Format (aniq shunday):\n"
+            "0) Tashxis: aniqlangan til + xat uslubi + (hint mos/mos emas) + qisqa sabab\n"
+            "   Ishonchlilik: past | o‘rtacha | yuqori (bittasini tanlang)\n"
+            "1) Paleografiya\n"
+            "2) Transliteratsiya (satrma-satr, o‘qilganicha)\n"
+            "3) Tarjima (akademik, mazmuniy)\n"
+            "4) Arxaik lug'at (5–10 so‘z)\n"
+            "5) Izoh (kontekst, shaxs/joy/sana bo‘lsa ehtiyot bilan)\n\n"
             "Qoidalar:\n"
             "- O‘qilmagan joyni taxmin qilmang: [o‘qilmadi] yoki [?] bilan belgilang.\n"
-            "- Ism/son/sana bo‘lsa aynan ko‘ringanicha yozing.\n"
-            "- Hech qachon inglizcha label ishlatma (Generated, File, Language, Script, Model va h.k.). Faqat o‘zbekcha yoz.\n"
+            "- Ism/son/sana bo‘lsa aynan ko‘ringanicha yozing (tasdiqsiz uydirma qilmang).\n"
+            "- Hech qachon inglizcha label ishlatma. Faqat o‘zbekcha yoz.\n"
         )
 
         for idx in selected_indices:
+            reserved = False
             with st.status(f"Sahifa {idx+1}...") as s:
                 try:
+                    if st.session_state.auth:
+                        ok = reserve_credit(st.session_state.u_email)
+                        if not ok:
+                            st.warning("Kredit tugagan. Davom etish uchun kredit qo‘shing.")
+                            s.update(label="Kredit yetarli emas", state="error")
+                            continue
+                        reserved = True
+
                     img_bytes = processed_pages[idx]
                     payload = {"mime_type": "image/jpeg", "data": base64.b64encode(img_bytes).decode("utf-8")}
                     text = call_gemini_with_retry(prompt, payload, tries=4)
+
+                    if not text.strip():
+                        if reserved:
+                            refund_credit(st.session_state.u_email)
+                        s.update(label="Bo‘sh natija (refund)", state="error")
+                        st.error("AI bo‘sh natija qaytardi. Qayta urinib ko‘ring.")
+                        continue
+
                     st.session_state.results[idx] = text
-
-                    if st.session_state.auth:
-                        consume_credit(st.session_state.u_email)
-
                     s.update(label="Tayyor!", state="complete")
+
                 except Exception as e:
+                    if reserved:
+                        refund_credit(st.session_state.u_email)
                     st.error(f"Xato: {e}")
+                    s.update(label="Xato (refund)", state="error")
 
         gc.collect()
         st.rerun()
 
-    # RESULTS
     if st.session_state.results:
         st.divider()
-
         keys = sorted(st.session_state.results.keys())
+
         for idx in keys:
             with st.expander(f"📖 Varaq {idx+1}", expanded=(idx == keys[0])):
                 res = st.session_state.results[idx] or ""
 
-                # image HTML
                 img_b64 = base64.b64encode(processed_pages[idx]).decode("utf-8")
                 img_html = f"""
                 <div class="sticky-preview">
@@ -867,11 +931,8 @@ if uploaded_file:
                     tabs = st.tabs(["📷 Rasm", "📝 Natija", "✍️ Tahrir", "💬 Chat"])
                     with tabs[0]:
                         st.markdown(img_html, unsafe_allow_html=True)
-
                     with tabs[1]:
-                        # ✅ FIX: render MD (tables/headings) INSIDE card reliably
                         components.html(render_result_card(res, C["gold"]), height=580, scrolling=True)
-
                     with tabs[2]:
                         if not st.session_state.auth:
                             st.markdown("<div class='premium-alert'>🔒 Tahrir/Word/Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
@@ -882,7 +943,6 @@ if uploaded_file:
                                 height=260,
                                 key=f"ed_{idx}"
                             )
-
                     with tabs[3]:
                         if not st.session_state.auth:
                             st.markdown("<div class='premium-alert'>🔒 Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
@@ -891,7 +951,6 @@ if uploaded_file:
                             for ch in st.session_state.chats[idx]:
                                 st.markdown(f"<div class='chat-user'><b>S:</b> {html.escape(ch['q'])}</div>", unsafe_allow_html=True)
                                 st.markdown(f"<div class='chat-ai'><b>AI:</b> {html.escape(ch['a'])}</div>", unsafe_allow_html=True)
-
                             user_q = st.text_input("Savol bering:", key=f"q_{idx}")
                             if st.button(f"So'rash ({idx+1})", key=f"btn_{idx}"):
                                 if user_q.strip():
@@ -900,13 +959,11 @@ if uploaded_file:
                                         chat_resp = model.generate_content([chat_prompt])
                                         st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
                                         st.rerun()
-
                 else:
                     c1, c2 = st.columns([1, 1.35], gap="large")
                     with c1:
                         st.markdown(img_html, unsafe_allow_html=True)
                     with c2:
-                        # ✅ FIX: card inside iframe => tables won't "fall out"
                         components.html(render_result_card(res, C["gold"]), height=580, scrolling=True)
 
                         if not st.session_state.auth:
@@ -919,29 +976,14 @@ if uploaded_file:
                                 key=f"ed_{idx}"
                             )
 
-                            st.session_state.chats.setdefault(idx, [])
-                            for ch in st.session_state.chats[idx]:
-                                st.markdown(f"<div class='chat-user'><b>S:</b> {html.escape(ch['q'])}</div>", unsafe_allow_html=True)
-                                st.markdown(f"<div class='chat-ai'><b>AI:</b> {html.escape(ch['a'])}</div>", unsafe_allow_html=True)
-
-                            user_q = st.text_input("Savol bering:", key=f"q_{idx}")
-                            if st.button(f"So'rash ({idx+1})", key=f"btn_{idx}"):
-                                if user_q.strip():
-                                    with st.spinner("..."):
-                                        chat_prompt = f"Doc: {st.session_state.results[idx]}\nQ: {user_q}"
-                                        chat_resp = model.generate_content([chat_prompt])
-                                        st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
-                                        st.rerun()
-
-        # WORD EXPORT (single build, world-ish standard)
         if st.session_state.auth and st.session_state.results:
             meta = {
                 "Hujjat nomi": st.session_state.last_fn,
-                "Til": lang,
-                "Xat uslubi": era,
+                "Til (hint)": lang,
+                "Xat uslubi (hint)": era,
+                "Avto aniqlash": "Ha" if auto_detect else "Yo‘q",
                 "Eksport qilingan sahifalar": ", ".join(str(i+1) for i in sorted(st.session_state.results.keys())),
                 "Yaratilgan vaqt": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Model": "gemini-flash-latest",
             }
             report_bytes = build_word_report("Manuscript AI", meta, st.session_state.results)
             st.download_button("📥 WORD HISOBOTNI YUKLAB OLISH (.docx)", report_bytes, file_name="Manuscript_AI_Report.docx")
