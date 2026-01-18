@@ -15,18 +15,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from supabase import create_client
 
 
-# =========================================================
-# 0) APP FLAGS (xavfsiz boshqaruv)
-# =========================================================
-ENABLE_GOOGLE_LOGIN = True          # ✅ Supabase Google OAuth ishlaydi
-ENABLE_PASSWORD_FALLBACK = True     # (xohlasangiz False qiling) admin fallback
-DEFAULT_NEW_USER_CREDITS = 10       # yangi user uchun kredit (demo)
-MAX_CHAT_HISTORY = 30               # har sahifa chat tarix limiti
-
-
-# =========================================================
+# ==========================================
 # 1) CONFIG
-# =========================================================
+# ==========================================
 st.set_page_config(
     page_title="Manuscript AI - Open Academic Portal",
     page_icon="📜",
@@ -34,10 +25,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# =========================================================
+# ==========================================
 # 2) THEME (tanlangan: DARK_GOLD)
-# =========================================================
-THEME = "DARK_GOLD"
+# ==========================================
+THEME = "DARK_GOLD"  # tanlandi
 
 THEMES = {
     "DARK_GOLD": {
@@ -71,9 +62,9 @@ THEMES = {
 C = THEMES.get(THEME, THEMES["DARK_GOLD"])
 
 
-# =========================================================
-# 3) CSS (pro, kontrast fix, white gap fix, readable sidebar)
-# =========================================================
+# ==========================================
+# 3) CSS (pro, kontrast fix, white gap fix)
+# ==========================================
 st.markdown(f"""
 <style>
 :root {{
@@ -90,10 +81,9 @@ html, body {{
   background: var(--app-bg) !important;
   margin: 0 !important;
   padding: 0 !important;
-  height: 100% !important;
 }}
 
-.stApp, div[data-testid="stAppViewContainer"], div[data-testid="stMain"] {{
+.stApp, div[data-testid="stAppViewContainer"] {{
   background: var(--app-bg) !important;
   min-height: 100vh !important;
 }}
@@ -114,9 +104,6 @@ section[data-testid="stSidebar"] {{
 }}
 section[data-testid="stSidebar"] * {{
   color: var(--text) !important;
-}}
-section[data-testid="stSidebar"] .stMarkdown p {{
-  color: var(--muted) !important;
 }}
 section[data-testid="stSidebar"] .stCaption {{
   color: var(--muted) !important;
@@ -229,9 +216,9 @@ h1, h2, h3, h4 {{
 """, unsafe_allow_html=True)
 
 
-# =========================================================
+# ==========================================
 # 4) SERVICES
-# =========================================================
+# ==========================================
 @st.cache_resource
 def get_db():
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
@@ -239,12 +226,12 @@ def get_db():
 db = get_db()
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel(model_name="gemini-flash-latest")  # ❗O'ZGARMAYDI
+model = genai.GenerativeModel(model_name="gemini-flash-latest")  # O'ZGARMAYDI
 
 
-# =========================================================
+# ==========================================
 # 5) STATE
-# =========================================================
+# ==========================================
 if "auth" not in st.session_state: st.session_state.auth = False
 if "u_email" not in st.session_state: st.session_state.u_email = "Mehmon"
 if "last_fn" not in st.session_state: st.session_state.last_fn = None
@@ -254,121 +241,38 @@ if "results" not in st.session_state: st.session_state.results = {}
 if "chats" not in st.session_state: st.session_state.chats = {}
 if "warn_rpc" not in st.session_state: st.session_state.warn_rpc = False
 
-if "selected_indices" not in st.session_state: st.session_state.selected_indices = []
-if "page_spec" not in st.session_state: st.session_state.page_spec = "1"
 
-
-# =========================================================
-# 6) QUERY PARAMS HELPERS (Google OAuth callback uchun)
-# =========================================================
-def _get_qp() -> dict:
-    """Streamlit query params (v1.28+ va eski) uchun moslashuv."""
-    try:
-        # st.query_params dict-like (new)
-        return dict(st.query_params)
-    except Exception:
-        qp = st.experimental_get_query_params()
-        # {"k":[...]} format -> {"k":"..."}
-        out = {}
-        for k, v in qp.items():
-            out[k] = v[0] if isinstance(v, list) and v else (v or "")
-        return out
-
-def _clear_qp():
-    try:
-        st.query_params.clear()
-    except Exception:
-        st.experimental_set_query_params()
-
-
-# =========================================================
-# 7) GOOGLE OAUTH (Supabase) — real login
-# =========================================================
-def _oauth_url_google() -> str:
-    # redirect_to bo'sh bo'lsa, Supabase "Site URL" ga qaytaradi (siz qo'yib qo'ygansiz)
-    redirect_to = st.secrets.get("PUBLIC_APP_URL", "").strip() if hasattr(st, "secrets") else ""
-    payload = {"provider": "google"}
-    if redirect_to:
-        payload["options"] = {"redirect_to": redirect_to}
-
-    try:
-        r = db.auth.sign_in_with_oauth(payload)
-        if isinstance(r, dict) and "url" in r:
-            return r["url"]
-        url = getattr(r, "url", "") or ""
-        return url
-    except Exception:
-        return ""
-
-def _oauth_finish_from_query_params() -> bool:
-    """
-    OAuth redirectdan keyin URL queryga tushgan tokenlarni olib,
-    user emailni aniqlab session_state.auth ni yoqadi.
-    """
-    qp = _get_qp()
-    access_token = qp.get("access_token", "") or qp.get("token", "")
-    if not access_token:
+# ==========================================
+# 6) HELPERS
+# ==========================================
+def is_valid_email(em: str) -> bool:
+    em = (em or "").strip()
+    if not em or "@" not in em or "." not in em:
         return False
+    # juda yengil tekshiruv (UI uchun yetarli)
+    return len(em) <= 254
 
-    # Userni topish
-    email = ""
-    try:
-        u = db.auth.get_user(access_token)
-        # supabase-py response turli bo'lishi mumkin
-        if isinstance(u, dict):
-            email = (((u.get("user") or {}).get("email")) or "").strip()
-        else:
-            user_obj = getattr(u, "user", None)
-            email = (getattr(user_obj, "email", "") or "").strip()
-    except Exception:
-        email = ""
-
+def ensure_profile(email: str, default_credits: int = 10) -> None:
+    """
+    Profil bo'lmasa yaratadi, bo'lsa tegmaydi.
+    (supabase insert duplicate bo'lsa exception chiqadi — ushlab ketamiz)
+    """
+    email = (email or "").strip()
     if not email:
-        st.error("Google login tugadi, lekin email olinmadi. Supabase Provider sozlamasini tekshiring.")
-        return False
-
-    # profile mavjud bo'lmasa yaratamiz
+        return
     try:
-        db.table("profiles").insert({"email": email, "credits": DEFAULT_NEW_USER_CREDITS}).execute()
+        # avval bor-yo'qligini tekshirish
+        res = db.table("profiles").select("email").eq("email", email).limit(1).execute()
+        if res.data:
+            return
+    except Exception:
+        # tekshiruv xato bo'lsa ham insertni urinamiz
+        pass
+    try:
+        db.table("profiles").insert({"email": email, "credits": int(default_credits)}).execute()
     except Exception:
         pass
 
-    st.session_state.auth = True
-    st.session_state.u_email = email
-    _clear_qp()
-    st.rerun()
-    return True
-
-# Supabase odatda tokenni URL hash (#access_token=...) ga beradi.
-# Streamlit server queryni ko'radi, fragmentni ko'rmaydi. Shuning uchun JS fragmentni queryga ko'chiradi.
-components.html("""
-<script>
-(function(){
-  try{
-    var h = window.location.hash || "";
-    if(!h || h.indexOf("access_token=") === -1) return;
-    var hash = h.replace(/^#/, "");
-    var params = new URLSearchParams(hash);
-    // safety: faqat keraklilarni ko'chiramiz
-    var out = new URLSearchParams(window.location.search);
-    ["access_token","refresh_token","expires_in","token_type"].forEach(function(k){
-      var v = params.get(k);
-      if(v) out.set(k,v);
-    });
-    var newUrl = window.location.pathname + "?" + out.toString();
-    window.location.replace(newUrl);
-  }catch(e){}
-})();
-</script>
-""", height=0)
-
-# Queryda token bo'lsa loginni yakunlaymiz
-_oauth_finish_from_query_params()
-
-
-# =========================================================
-# 8) HELPERS (render/cache/preprocess/pages/ai/retry/credits)
-# =========================================================
 def pil_to_jpeg_bytes(img: Image.Image, quality: int = 88, max_side: int = 2400) -> bytes:
     img = img.convert("RGB")
     w, h = img.size
@@ -396,10 +300,10 @@ def render_pdf_pages_to_bytes(file_bytes: bytes, max_pages: int, scale: float) -
             pass
     return out
 
-@st.cache_data(show_spinner=False, max_entries=256)
+@st.cache_data(show_spinner=False, max_entries=128)
 def preprocess_bytes(img_bytes: bytes, brightness: float, contrast: float, rotate: int) -> bytes:
     img = Image.open(io.BytesIO(img_bytes))
-    img = ImageOps.exif_transpose(img)  # rotation muammosini yo'qotadi
+    img = ImageOps.exif_transpose(img)
     if rotate:
         img = img.rotate(rotate, expand=True)
     img = ImageEnhance.Brightness(img).enhance(brightness)
@@ -438,55 +342,27 @@ def call_gemini_with_retry(prompt: str, payload: dict, tries: int = 4) -> str:
         except Exception as e:
             last_err = e
             msg = str(e).lower()
-            # 429/limit/temporary
-            if ("429" in msg) or ("rate" in msg) or ("quota" in msg) or ("resource" in msg) or ("tempor" in msg):
+            if ("429" in msg) or ("rate" in msg) or ("quota" in msg) or ("resource" in msg):
                 time.sleep((2 ** i) + random.random())
                 continue
             raise
     raise RuntimeError("Juda ko'p so'rov (429). Birozdan keyin qayta urinib ko'ring.") from last_err
 
-def _reserve_credit_fallback(email: str) -> bool:
-    """RPC bo'lmasa best-effort fallback (race-proof emas)."""
-    try:
-        res = db.table("profiles").select("credits").eq("email", email).single().execute()
-        credits = int(res.data["credits"]) if res.data else 0
-        if credits <= 0:
-            return False
-        db.table("profiles").update({"credits": credits - 1}).eq("email", email).execute()
-        return True
-    except Exception:
-        return False
-
-def _refund_credit_fallback(email: str) -> None:
-    try:
-        res = db.table("profiles").select("credits").eq("email", email).single().execute()
-        credits = int(res.data["credits"]) if res.data else 0
-        db.table("profiles").update({"credits": credits + 1}).eq("email", email).execute()
-    except Exception:
-        pass
-
 def reserve_credit(email: str) -> bool:
-    """✅ Ideal flow: RPC consume_credits(); bo'lmasa fallback."""
     try:
         r = db.rpc("consume_credits", {"p_email": email, "p_n": 1}).execute()
         return bool(r.data)
     except Exception:
         st.session_state.warn_rpc = True
-        return _reserve_credit_fallback(email)
+        return False
 
 def refund_credit(email: str) -> None:
-    """✅ Ideal flow: RPC refund_credits(); bo'lmasa fallback."""
     try:
         db.rpc("refund_credits", {"p_email": email, "p_n": 1}).execute()
     except Exception:
-        st.session_state.warn_rpc = True
-        _refund_credit_fallback(email)
+        pass
 
 def extract_diagnosis(text: str) -> dict:
-    """
-    AI natijasidan aniqlangan Til / Xat uslubi / Ishonchlilik ni ajratib oladi.
-    Prompt formatiga mos: "Til: ...", "Xat uslubi: ...", "Ishonchlilik: ..."
-    """
     t = text or ""
     def pick(rx):
         m = re.search(rx, t, flags=re.IGNORECASE)
@@ -495,13 +371,12 @@ def extract_diagnosis(text: str) -> dict:
     til = pick(r"Til\s*:\s*(.+)")
     xat = pick(r"Xat\s*uslubi\s*:\s*(.+)")
     conf = pick(r"Ishonchlilik\s*:\s*(.+)")
-    # tozalash
     til = til.replace("|", "").strip()
     xat = xat.replace("|", "").strip()
     conf = conf.replace("|", "").strip()
     return {"til": til, "xat": xat, "conf": conf}
 
-def aggregate_detected_meta(results: dict[int, str], hint_lang: str, hint_xat: str) -> dict:
+def aggregate_detected_meta(results: dict[int, str]) -> dict:
     til_list = []
     xat_list = []
     conf_list = []
@@ -517,21 +392,12 @@ def aggregate_detected_meta(results: dict[int, str], hint_lang: str, hint_xat: s
     til = Counter(til_list).most_common(1)[0][0] if til_list else ""
     xat = Counter(xat_list).most_common(1)[0][0] if xat_list else ""
     conf = Counter(conf_list).most_common(1)[0][0] if conf_list else ""
-
-    # agar AI aniqlamasa, hintdan (Noma'lum bo'lmasa) foydalanamiz
-    if not til and hint_lang and hint_lang != "Noma'lum":
-        til = hint_lang + " (taxminiy)"
-    if not xat and hint_xat and hint_xat != "Noma'lum":
-        xat = hint_xat + " (taxminiy)"
-    if not conf:
-        conf = "o‘rtacha"
-
-    return {"til": til or "Noma'lum", "xat": xat or "Noma'lum", "conf": conf}
+    return {"til": til, "xat": xat, "conf": conf}
 
 
-# =========================================================
-# 9) RESULT CARD HTML (Tashxis highlight + badge, XSS safe)
-# =========================================================
+# ==========================================
+# 7) RESULT CARD HTML
+# ==========================================
 def _badge(conf: str) -> str:
     conf_l = (conf or "").lower()
     if "yuqori" in conf_l:
@@ -554,7 +420,6 @@ def md_to_html_with_diag(md: str) -> str:
     def is_h(nline: str) -> bool:
         return bool(re.match(r"^\d+\)\s+", nline.strip()))
 
-    # diagnosis block
     while i < len(lines):
         line = lines[i].rstrip()
 
@@ -578,7 +443,6 @@ def md_to_html_with_diag(md: str) -> str:
             """)
             continue
 
-        # headings
         if line.startswith("## "):
             out.append(f"<h2>{line[3:]}</h2>")
             i += 1
@@ -672,9 +536,9 @@ def render_result_card(md: str, gold: str) -> str:
     """
 
 
-# =========================================================
-# 10) WORD EXPORT (model katagi yo'q; Til/Xat: aniqlangan)
-# =========================================================
+# ==========================================
+# 8) WORD EXPORT
+# ==========================================
 def _doc_set_normal_style(doc: Document):
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
@@ -726,61 +590,29 @@ def build_word_report(app_name: str, meta: dict, pages: dict[int, str]) -> bytes
     return buf.getvalue()
 
 
-# =========================================================
-# 11) SIDEBAR (auth + controls + UX)
-# =========================================================
+# ==========================================
+# 9) SIDEBAR (email-only login, no password, no google button)
+# ==========================================
 with st.sidebar:
     st.markdown("<h2 style='text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
 
-    # --- LOGIN BLOCK ---
+    st.markdown("### 👤 Profil")
+
     if not st.session_state.auth:
-        st.markdown("### 🔐 Tizimga kirish")
+        st.caption("Kreditlarni hisoblash va hisobotlarni ochish uchun email kiriting.")
+        email_in = st.text_input("Email", placeholder="example@mail.com")
 
-        # Google login (real)
-        if ENABLE_GOOGLE_LOGIN:
-            url = _oauth_url_google()
-            if url:
-                st.markdown(
-                    f"""
-                    <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(197,160,89,0.35);
-                                border-radius:14px; padding:12px; margin-bottom:10px;">
-                      <div style="font-weight:900; color:{C["gold"]}; margin-bottom:8px;">Google bilan kirish</div>
-                      <a href="{url}" style="display:block; text-align:center; text-decoration:none;
-                                            background:linear-gradient(135deg,#0c1421 0%,#1e3a8a 100%);
-                                            color:{C["gold"]}; font-weight:900; padding:10px 12px;
-                                            border-radius:12px; border:1px solid rgba(197,160,89,0.8);">
-                        🔐 Google bilan kirish
-                      </a>
-                      <div style="margin-top:8px; color:{C["muted"]}; font-size:12px; line-height:1.4;">
-                        * Birinchi kirishda profil avtomatik yaratiladi (kredit: {DEFAULT_NEW_USER_CREDITS}).
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+        if st.button("KIRISH"):
+            em = (email_in or "").strip()
+            if not is_valid_email(em):
+                st.error("Emailni to‘g‘ri kiriting (masalan: user@gmail.com).")
             else:
-                st.warning("Google login URL olinmadi. Supabase Provider / URL sozlamasini tekshiring.")
+                st.session_state.auth = True
+                st.session_state.u_email = em
+                ensure_profile(em, default_credits=10)
+                st.rerun()
 
-        # Password fallback (hidden-ish)
-        if ENABLE_PASSWORD_FALLBACK:
-            with st.expander("🔧 Admin (qo‘lda) kirish", expanded=False):
-                st.caption("Demo / fallback uchun. Asosiy login — Google.")
-                email_in = st.text_input("Email", placeholder="example@mail.com")
-                pwd_in = st.text_input("Parol", type="password", placeholder="****")
-                if st.button("KIRISH"):
-                    if pwd_in == st.secrets["APP_PASSWORD"]:
-                        st.session_state.auth = True
-                        st.session_state.u_email = (email_in or "demo@mail.com").strip()
-                        try:
-                            db.table("profiles").insert(
-                                {"email": st.session_state.u_email, "credits": DEFAULT_NEW_USER_CREDITS}
-                            ).execute()
-                        except Exception:
-                            pass
-                        st.rerun()
-                    else:
-                        st.error("Xato parol!")
-
+        st.info("Google login vaqtincha o‘chirilgan. Hozircha email orqali profil kuzatiladi.")
     else:
         st.write(f"👤 **Foydalanuvchi:** `{st.session_state.u_email}`")
         try:
@@ -791,16 +623,14 @@ with st.sidebar:
 
         st.metric("💳 Kreditlar", f"{live_credits} sahifa")
         if st.session_state.warn_rpc:
-            st.warning("RPC muammo: consume_credits/refund_credits topilmadi yoki ishlamadi. (Fallback ishlayapti.)")
-
-        if st.button("🚪 TIZIMDAN CHIQISH"):
+            st.warning("RPC muammo: consume_credits/refund_credits ishlamayapti.")
+        if st.button("🚪 CHIQISH"):
             st.session_state.auth = False
             st.session_state.u_email = "Mehmon"
             st.rerun()
 
     st.divider()
 
-    # --- HINT & AUTO DETECT ---
     auto_detect = st.checkbox("🧠 Avto aniqlash (tavsiya)", value=True)
     lang = st.selectbox("Taxminiy matn tili (hint):", ["Noma'lum", "Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"], index=0)
     era = st.selectbox("Taxminiy xat uslubi (hint):", ["Noma'lum", "Nasta'liq", "Suls", "Riq'a", "Kufiy"], index=0)
@@ -810,21 +640,21 @@ with st.sidebar:
     brightness = st.slider("Yorqinlik:", 0.5, 2.0, 1.0)
     contrast = st.slider("Kontrast:", 0.5, 3.0, 1.2)
 
-    scale = st.slider("PDF render miqyosi:", 1.5, 3.8, 2.2, 0.1)
+    scale = st.slider("PDF render scale:", 1.5, 3.8, 2.2, 0.1)
     max_pages = st.slider("Preview max sahifa:", 1, 60, 30)
 
     st.markdown("### 🧭 Ko'rinish")
-    view_mode = st.radio("Natija ko'rinishi:", ["Tabs", "Yonma-yon"], index=0, horizontal=True)
+    view_mode = st.radio("Natija ko'rinishi:", ["Yonma-yon", "Tabs"], index=0, horizontal=True)
 
-    st.markdown("### ✨ UI")
-    ui_progress = st.checkbox("Top progress bar", value=True)
-    ui_cta = st.checkbox("CTA card (login yo'q payt)", value=True)
-    ui_empty = st.checkbox("Empty state hero", value=True)
+    st.markdown("### ✨ UI Features")
+    ui_progress = st.checkbox("Top progress bar (tavsiya)", value=True)
+    ui_cta = st.checkbox("CTA card (login bo'lmaganlarga)", value=True)
+    ui_empty = st.checkbox("Empty state hero (fayl yo'q payt)", value=True)
 
 
-# =========================================================
-# 12) MAIN
-# =========================================================
+# ==========================================
+# 10) MAIN
+# ==========================================
 st.title("📜 Manuscript AI Center")
 st.markdown("<p style='text-align:center;'>Qadimiy hujjatlarni yuklang va AI yordamida tahlil qiling.</p>", unsafe_allow_html=True)
 
@@ -871,36 +701,7 @@ if (uploaded_file is None) and ui_empty:
     </div>
     """, unsafe_allow_html=True)
 
-# CTA card (login yo'q payt)
-if (not st.session_state.auth) and ui_cta:
-    st.markdown(f"""
-    <div style="
-      background: rgba(255,243,224,1);
-      border: 1px solid #ffb74d;
-      border-radius: 14px;
-      padding: 14px 14px;
-      margin: 12px 0 12px 0;
-      max-width: 980px;
-      margin-left:auto; margin-right:auto;
-    ">
-      <div style="font-weight:900; color:#e65100; font-size:16px;">
-        🔒 Word hisobot + Tahrir + AI Chat — Premium
-      </div>
-      <div style="margin-top:6px; color:#5a3a00; line-height:1.6;">
-        Demo rejimda natijani ko‘rishingiz mumkin. To‘liq funksiyalar uchun tizimga kiring.
-      </div>
-      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
-        <div style="background: rgba(12,20,33,0.10); border: 1px dashed rgba(230,81,0,0.35);
-                    border-radius: 12px; padding: 8px 10px; color:#5a3a00; font-weight:900; font-size:13px;">
-          Google bilan kirish (Supabase OAuth) ✅
-        </div>
-        <div style="color:#5a3a00; font-size:13px;">Tez va qulay kirish</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
 if uploaded_file:
-    # Load/render once per file
     if st.session_state.last_fn != uploaded_file.name:
         with st.spinner("Preparing..."):
             file_bytes = uploaded_file.getvalue()
@@ -915,9 +716,6 @@ if uploaded_file:
             st.session_state.results = {}
             st.session_state.chats = {}
             st.session_state.warn_rpc = False
-            # default select first page
-            st.session_state.selected_indices = [0] if pages else []
-            st.session_state.page_spec = "1"
             gc.collect()
 
     processed_pages = [
@@ -928,46 +726,23 @@ if uploaded_file:
     total_pages = len(processed_pages)
     st.caption(f"Yuklandi: **{total_pages}** sahifa (preview limit: {max_pages}).")
 
-    # ---------------------------------------------------------
-    # Page selection UX (Multi + Range)
-    # ---------------------------------------------------------
-    st.markdown("### 📄 Sahifalarni tanlash")
-
+    # Page selection UX
     if total_pages <= 30:
-        t1, t2 = st.tabs(["✅ Tez tanlash", "⌨️ Range (1-5, 9, 12-20)"])
-        with t1:
-            sel = st.multiselect(
-                "Sahifalar:",
-                options=list(range(total_pages)),
-                default=st.session_state.selected_indices or ([0] if total_pages else []),
-                format_func=lambda x: f"{x+1}-sahifa",
-                key="ms_select"
-            )
-            st.session_state.selected_indices = sel
-
-        with t2:
-            st.session_state.page_spec = st.text_input(
-                "Range:",
-                value=st.session_state.page_spec or "1",
-                help="Masalan: 1-3, 7, 10-12"
-            )
-            if st.button("Range bo‘yicha tanlash"):
-                st.session_state.selected_indices = parse_pages(st.session_state.page_spec, total_pages)
-    else:
-        st.session_state.page_spec = st.text_input(
-            "Sahifalar (masalan: 1-5, 9, 12-20):",
-            value=st.session_state.page_spec or "1"
+        selected_indices = st.multiselect(
+            "Sahifalarni tanlang:",
+            options=list(range(total_pages)),
+            default=[0] if total_pages else [],
+            format_func=lambda x: f"{x+1}-sahifa"
         )
-        st.session_state.selected_indices = parse_pages(st.session_state.page_spec, total_pages)
+        page_spec = st.text_input("Range (masalan: 1-3, 7, 10-12):", value="1")
+        if st.button("Range bo'yicha tanlash"):
+            selected_indices = parse_pages(page_spec, total_pages)
+    else:
+        page_spec = st.text_input("Sahifalar (masalan: 1-5, 9, 12-20):", value="1")
+        selected_indices = parse_pages(page_spec, total_pages)
         st.caption("Maslahat: juda ko'p sahifani biryo'la yubormang (429 kamayadi).")
 
-    selected_indices = st.session_state.selected_indices or []
-
-    if not selected_indices and total_pages > 0:
-        selected_indices = [0]
-        st.session_state.selected_indices = [0]
-
-    # Preview grid (faqat natija yo'q bo'lsa)
+    # Preview grid
     if not st.session_state.results and selected_indices:
         cols = st.columns(min(len(selected_indices), 4))
         for i, idx in enumerate(selected_indices[:16]):
@@ -976,9 +751,35 @@ if uploaded_file:
         if len(selected_indices) > 16:
             st.info(f"Previewda faqat 16 ta ko'rsatildi. Tanlangan jami: {len(selected_indices)}.")
 
-    # ---------------------------------------------------------
-    # Run analysis (B-variant: kredit tugadi + xatoda refund)
-    # ---------------------------------------------------------
+    # CTA card (home) — Google matni olib tashlandi, Email bilan kirish
+    if (not st.session_state.auth) and ui_cta:
+        st.markdown(f"""
+        <div style="
+          background: rgba(255,243,224,1);
+          border: 1px solid #ffb74d;
+          border-radius: 14px;
+          padding: 14px 14px;
+          margin: 12px 0 12px 0;
+          max-width: 980px;
+          margin-left:auto; margin-right:auto;
+        ">
+          <div style="font-weight:900; color:#e65100; font-size:16px;">
+            🔒 Word hisobot + Tahrir + AI Chat — Premium
+          </div>
+          <div style="margin-top:6px; color:#5a3a00; line-height:1.6;">
+            Demo rejimda natijani ko‘rishingiz mumkin. To‘liq funksiyalar uchun email bilan tizimga kiring.
+          </div>
+          <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+            <div style="background: rgba(12,20,33,0.10); border: 1px dashed rgba(230,81,0,0.35);
+                        border-radius: 12px; padding: 8px 10px; color:#5a3a00; font-weight:900; font-size:13px;">
+              Email bilan kirish ✅
+            </div>
+            <div style="color:#5a3a00; font-size:13px;">Kreditlar Supabase profil orqali kuzatiladi</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Run analysis
     if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
         hint_lang = "" if (auto_detect or lang == "Noma'lum") else lang
         hint_era = "" if (auto_detect or era == "Noma'lum") else era
@@ -1032,7 +833,7 @@ if uploaded_file:
                         ok = reserve_credit(st.session_state.u_email)
                         if not ok:
                             s.update(label="Kredit yetarli emas", state="error")
-                            st.error("💳 Kredit tugagan. Davom etish uchun kredit qo‘shing.")
+                            st.warning("Kredit tugagan. Davom etish uchun kredit qo‘shing.")
                             continue
                         reserved = True
 
@@ -1041,7 +842,6 @@ if uploaded_file:
                     text = call_gemini_with_retry(prompt, payload, tries=4)
 
                     if not text.strip():
-                        # refund
                         if reserved:
                             refund_credit(st.session_state.u_email)
                         s.update(label="Bo‘sh natija (refund)", state="error")
@@ -1052,7 +852,6 @@ if uploaded_file:
                     s.update(label="Tayyor!", state="complete")
 
                 except Exception as e:
-                    # refund
                     if reserved:
                         refund_credit(st.session_state.u_email)
                     s.update(label="Xato (refund)", state="error")
@@ -1067,9 +866,7 @@ if uploaded_file:
         gc.collect()
         st.rerun()
 
-    # ---------------------------------------------------------
-    # RESULTS
-    # ---------------------------------------------------------
+    # Results area
     if st.session_state.results:
         st.divider()
         keys = sorted(st.session_state.results.keys())
@@ -1090,10 +887,11 @@ if uploaded_file:
                     with tabs[0]:
                         st.markdown(img_html, unsafe_allow_html=True)
                     with tabs[1]:
-                        components.html(render_result_card(res, C["gold"]), height=600, scrolling=True)
+                        components.html(render_result_card(res, C["gold"]), height=580, scrolling=True)
                     with tabs[2]:
                         if not st.session_state.auth:
-                            st.info("🔒 Tahrir uchun tizimga kiring.")
+                            if ui_cta:
+                                st.info("🔒 Tahrir/Word/Chat uchun email bilan tizimga kiring.")
                         else:
                             st.session_state.results[idx] = st.text_area(
                                 f"Tahrir ({idx+1}):",
@@ -1103,30 +901,24 @@ if uploaded_file:
                             )
                     with tabs[3]:
                         if not st.session_state.auth:
-                            st.info("🔒 Chat uchun tizimga kiring.")
+                            if ui_cta:
+                                st.info("🔒 Chat uchun email bilan tizimga kiring.")
                         else:
                             st.session_state.chats.setdefault(idx, [])
-                            for ch in st.session_state.chats[idx][-MAX_CHAT_HISTORY:]:
+                            for ch in st.session_state.chats[idx]:
                                 st.markdown(f"<div class='chat-user'><b>S:</b> {html.escape(ch['q'])}</div>", unsafe_allow_html=True)
                                 st.markdown(f"<div class='chat-ai'><b>AI:</b> {html.escape(ch['a'])}</div>", unsafe_allow_html=True)
 
                             user_q = st.text_input("Savol bering:", key=f"q_{idx}")
-                            if st.button(f"So‘rash ({idx+1})", key=f"btn_{idx}"):
+                            if st.button(f"So'rash ({idx+1})", key=f"btn_{idx}"):
                                 if user_q.strip():
                                     with st.spinner("..."):
-                                        chat_prompt = (
-                                            f"Matn: {st.session_state.results[idx]}\n"
-                                            f"Savol: {user_q}\n"
-                                            "Javobni o‘zbekcha, aniq va qisqa yoz."
-                                        )
+                                        chat_prompt = f"Matn: {st.session_state.results[idx]}\nSavol: {user_q}\nJavobni o‘zbekcha, aniq va qisqa yoz."
                                         chat_resp = model.generate_content([chat_prompt])
-                                        st.session_state.chats[idx].append(
-                                            {"q": user_q, "a": getattr(chat_resp, "text", "") or ""}
-                                        )
+                                        st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
                                         st.rerun()
 
                 else:
-                    # Yonma-yon + chat o'ng tomonda
                     c1, c2 = st.columns([1, 1.35], gap="large")
                     with c1:
                         st.markdown(img_html, unsafe_allow_html=True)
@@ -1134,50 +926,42 @@ if uploaded_file:
                         components.html(render_result_card(res, C["gold"]), height=520, scrolling=True)
 
                         if not st.session_state.auth:
-                            st.info("🔒 Tahrir/Word/Chat uchun tizimga kiring.")
+                            if ui_cta:
+                                st.info("🔒 Tahrir/Word/Chat uchun email bilan tizimga kiring.")
                         else:
                             st.session_state.results[idx] = st.text_area(
                                 f"Tahrir ({idx+1}):",
                                 value=st.session_state.results[idx],
                                 height=220,
-                                key=f"ed_side_{idx}"
+                                key=f"ed_{idx}"
                             )
 
                             with st.expander("💬 AI Chat (shu varaq bo‘yicha)", expanded=True):
                                 st.session_state.chats.setdefault(idx, [])
-                                for ch in st.session_state.chats[idx][-MAX_CHAT_HISTORY:]:
+                                for ch in st.session_state.chats[idx]:
                                     st.markdown(f"<div class='chat-user'><b>S:</b> {html.escape(ch['q'])}</div>", unsafe_allow_html=True)
                                     st.markdown(f"<div class='chat-ai'><b>AI:</b> {html.escape(ch['a'])}</div>", unsafe_allow_html=True)
 
                                 user_q = st.text_input("Savol bering:", key=f"q_side_{idx}")
-                                if st.button(f"So‘rash (Varaq {idx+1})", key=f"btn_side_{idx}"):
+                                if st.button(f"So'rash (Varaq {idx+1})", key=f"btn_side_{idx}"):
                                     if user_q.strip():
                                         with st.spinner("..."):
-                                            chat_prompt = (
-                                                f"Matn: {st.session_state.results[idx]}\n"
-                                                f"Savol: {user_q}\n"
-                                                "Javobni o‘zbekcha, aniq va qisqa yoz."
-                                            )
+                                            chat_prompt = f"Matn: {st.session_state.results[idx]}\nSavol: {user_q}\nJavobni o‘zbekcha, aniq va qisqa yoz."
                                             chat_resp = model.generate_content([chat_prompt])
-                                            st.session_state.chats[idx].append(
-                                                {"q": user_q, "a": getattr(chat_resp, "text", "") or ""}
-                                            )
+                                            st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
                                             st.rerun()
 
-        # ---------------------------------------------------------
-        # Word Export (Til/Xat: AI aniqlaganini qo'yamiz)
-        # "Model" katagi yo'q (siz so‘ragan)
-        # ---------------------------------------------------------
+        # Word Export
         if st.session_state.auth and st.session_state.results:
-            hint_lang = "" if (auto_detect or lang == "Noma'lum") else lang
-            hint_era = "" if (auto_detect or era == "Noma'lum") else era
-            detected = aggregate_detected_meta(st.session_state.results, hint_lang, hint_era)
+            detected = aggregate_detected_meta(st.session_state.results)
 
             meta = {
                 "Hujjat nomi": st.session_state.last_fn,
-                "Til (aniqlangan)": detected["til"],
-                "Xat uslubi (aniqlangan)": detected["xat"],
+                "Til (aniqlangan)": detected["til"] or "Noma'lum",
+                "Xat uslubi (aniqlangan)": detected["xat"] or "Noma'lum",
                 "Avto aniqlash": "Ha" if auto_detect else "Yo‘q",
+                "Til (hint)": lang,
+                "Xat uslubi (hint)": era,
                 "Eksport qilingan sahifalar": ", ".join(str(i+1) for i in sorted(st.session_state.results.keys())),
                 "Yaratilgan vaqt": datetime.now().strftime("%Y-%m-%d %H:%M"),
             }
