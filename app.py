@@ -1,12 +1,12 @@
 # app.py
 # Manuscript AI Center — Email-only MVP (no password, no Google)
 # Focus: maximum transcription+translation coverage (no summarization truncation)
+# Output ONLY: 1) To‘g‘ridan-to‘g‘ri tarjima  2) Izoh
 
 import os
 import io
 import re
 import time
-import math
 import random
 import base64
 import datetime as dt
@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 # Optional: pdf -> images
@@ -53,16 +54,20 @@ STRIP_OVERLAP = 0.12             # overlap qamrovni oshiradi
 OCR_IMAGE_MAX_SIDE = 3400        # mayda matn uchun kattaroq
 
 # Translation chunking
-TRANSLIT_CHUNK_CHARS = 2200      # juda uzun matnni kesib yubormaslik uchun
-TRANSLIT_CHUNK_OVERLAP = 120
+TRANSLIT_CHUNK_CHARS = 2200      # uzun matnni chunk qilish
+TRANSLIT_CHUNK_OVERLAP = 140
 
 # Retry / validation
 OCR_TRIES = 2
 TRANSLATION_TRIES = 2
 
 # Delay tuning (429 kamaytirish)
-DELAY_MIN = 0.55
-DELAY_MAX = 1.15
+DELAY_MIN = 0.60
+DELAY_MAX = 1.30
+
+# Model output controls (kesilib qolmasligi uchun)
+MAX_OUT_TOKENS_OCR = 1800
+MAX_OUT_TOKENS_TXT = 4096
 
 
 # =========================
@@ -86,7 +91,7 @@ def inject_css():
             border-radius: 16px;
             padding: 12px 12px;
           }
-          .muted { opacity: 0.8; font-size: 0.92rem; }
+          .muted { opacity: 0.85; font-size: 0.92rem; }
           .tiny { opacity: 0.75; font-size: 0.85rem; }
           .badge {
             display:inline-block; padding: 2px 8px;
@@ -153,15 +158,18 @@ def get_gemini_models():
     if not GEMINI_API_KEY:
         return None, None
     genai.configure(api_key=GEMINI_API_KEY)
+
     # Two models: OCR image -> fast, translate -> accurate
     try:
         ocr = genai.GenerativeModel(MODEL_OCR)
     except Exception:
         ocr = genai.GenerativeModel("gemini-1.5-flash-latest")
+
     try:
         txt = genai.GenerativeModel(MODEL_TXT)
     except Exception:
-        txt = genai.GenerativeModel(MODEL_OCR)
+        txt = genai.GenerativeModel("gemini-1.5-flash-latest")
+
     return ocr, txt
 
 
@@ -248,11 +256,11 @@ def split_into_pages(pil_img: Image.Image) -> List[Image.Image]:
         return [left, right]
     return [pil_img]
 
-def split_vertical_strips(pil_img: Image.Image, n: int = STRIPS_PER_PAGE_DEFAULT, overlap: float = STRIP_OVERLAP) -> List[Image.Image]:
+def split_vertical_strips(pil_img: Image.Image, n: int, overlap: float = STRIP_OVERLAP) -> List[Image.Image]:
     """Bitta betni yuqoridan pastga n ta bo‘lak (strip) qilib bo‘ladi."""
     w, h = pil_img.size
     strips = []
-    step = h / n
+    step = h / max(1, n)
     ov = int(step * overlap)
     for i in range(n):
         y0 = max(0, int(i * step) - ov)
@@ -266,10 +274,9 @@ def pil_to_payload(img: Image.Image) -> Dict:
 
 def must_have_translit(text: str) -> bool:
     t = safe_text(text)
-    # coverage check — very rough but works well in practice
+    # coverage check — rough but effective
     if len(t) < 1200:
         return False
-    # must contain multiple lines or markers
     lines = [ln for ln in t.splitlines() if ln.strip()]
     if len(lines) < 10:
         return False
@@ -279,19 +286,27 @@ def call_gemini_image(prompt: str, img_payload: Dict, tries: int = 4) -> str:
     if not ocr_model:
         raise RuntimeError("Gemini OCR model topilmadi. GEMINI_API_KEY ni tekshiring.")
     last_err = None
-    for _ in range(tries):
+    for i in range(tries):
         try:
-            resp = ocr_model.generate_content([prompt, img_payload])
+            resp = ocr_model.generate_content(
+                [prompt, img_payload],
+                generation_config={"max_output_tokens": MAX_OUT_TOKENS_OCR, "temperature": 0.2},
+            )
             txt = getattr(resp, "text", "") or ""
             txt = txt.strip()
             if txt:
                 return txt
         except Exception as e:
             last_err = e
-            short_sleep()
+            # 429/backoff
+            time.sleep((2 ** min(i, 3)) * 0.6 + random.random() * 0.8)
     raise RuntimeError(f"Gemini OCR xato: {last_err}")
 
-def transcribe_full_page_from_image(pil_img: Image.Image, tries: int = OCR_TRIES) -> str:
+def transcribe_full_page_from_image(pil_img: Image.Image, strips_n: int, tries: int = OCR_TRIES) -> str:
+    """
+    2 bet bo‘lsa ajratadi, har betni strip qilib o‘qiydi.
+    Retry: strip sonini oshiradi.
+    """
     TRANSCRIBE_PROMPT = (
         "Siz paleograf-ekspertsiz. VAZIFA: faqat o‘qish (transliteratsiya).\n"
         "Qoidalar:\n"
@@ -300,19 +315,20 @@ def transcribe_full_page_from_image(pil_img: Image.Image, tries: int = OCR_TRIES
         "- O‘qilmagan joy: [o‘qilmadi] yoki [?].\n"
         "- Har satr alohida satrda bo‘lsin (line breaks saqlansin).\n"
         "- Tarjima qilmang.\n"
-        "Natija faqat matn bo‘lsin (hech qanday izoh/sarlavha shart emas).\n"
+        "Natija faqat matn bo‘lsin.\n"
     )
 
     last = ""
+    base_n = clamp(int(strips_n), 7, 14)
+
     for attempt in range(tries):
+        n = base_n if attempt == 0 else clamp(base_n + 3, 7, 14)
+
         pages = split_into_pages(pil_img)
         out_parts = []
 
-        # Retry strategiya: 2-urinishda strip sonini oshiramiz
-        strips_n = STRIPS_PER_PAGE_DEFAULT if attempt == 0 else clamp(STRIPS_PER_PAGE_DEFAULT + 3, 9, 14)
-
         for p_i, p in enumerate(pages, start=1):
-            strips = split_vertical_strips(p, n=strips_n, overlap=STRIP_OVERLAP)
+            strips = split_vertical_strips(p, n=n, overlap=STRIP_OVERLAP)
             for s_i, strip in enumerate(strips, start=1):
                 payload = pil_to_payload(strip)
                 txt = call_gemini_image(
@@ -323,7 +339,7 @@ def transcribe_full_page_from_image(pil_img: Image.Image, tries: int = OCR_TRIES
                 out_parts.append(txt.strip())
                 short_sleep()
 
-        joined = "\n".join([x for x in out_parts if x])
+        joined = "\n".join([x for x in out_parts if x]).strip()
         last = joined
         if must_have_translit(joined):
             return joined
@@ -353,82 +369,109 @@ def call_gemini_text(prompt: str, content: str, tries: int = 3) -> str:
     if not txt_model:
         raise RuntimeError("Gemini TXT model topilmadi. GEMINI_API_KEY ni tekshiring.")
     last_err = None
-    for _ in range(tries):
+    for i in range(tries):
         try:
-            resp = txt_model.generate_content([prompt, content])
+            resp = txt_model.generate_content(
+                [prompt, content],
+                generation_config={"max_output_tokens": MAX_OUT_TOKENS_TXT, "temperature": 0.2},
+            )
             txt = getattr(resp, "text", "") or ""
             txt = txt.strip()
             if txt:
                 return txt
         except Exception as e:
             last_err = e
-            short_sleep()
+            time.sleep((2 ** min(i, 3)) * 0.6 + random.random() * 0.9)
     raise RuntimeError(f"Gemini TEXT xato: {last_err}")
 
-def translation_validator(translit: str, translation: str) -> bool:
-    tr = safe_text(translation)
+def translation_validator(translit: str, direct_translation: str) -> bool:
+    tr = safe_text(direct_translation)
     tl = safe_text(translit)
-    if len(tr) < 400:
+    if len(tr) < 450:
         return False
-    # line coverage heuristic
     tl_lines = [x for x in tl.splitlines() if x.strip()]
     tr_lines = [x for x in tr.splitlines() if x.strip()]
-    if len(tl_lines) >= 20 and len(tr_lines) < max(12, int(len(tl_lines) * 0.35)):
+    # Agar translit katta bo‘lsa, tarjima ham juda qisqa bo‘lmasin
+    if len(tl_lines) >= 22 and len(tr_lines) < max(14, int(len(tl_lines) * 0.40)):
         return False
     return True
+
+def translate_direct_only(translit: str) -> str:
+    """
+    Chunklar bo‘yicha faqat to‘g‘ridan-to‘g‘ri tarjima qaytaradi (sarlavhasiz),
+    keyin bitta umumiy tarjimaga birlashtiriladi.
+    """
+    BASE_PROMPT = (
+        "Siz qadimiy qo‘lyozmalar tarjimoni va tarixiy matnlar mutaxassisiz.\n"
+        "Sizga TRANSLITERATSIYA MATNI beriladi.\n\n"
+        "Qoidalar (qat’iy):\n"
+        "- QISQARTIRMA! XULOSA QILMA!\n"
+        "- O‘qilmagan joyni taxmin qilma: [o‘qilmadi] yoki [?] ni saqla.\n"
+        "- Ism/son/sana/joy: faqat ko‘ringanini tarjima qil.\n"
+        "- Tarjima oddiy o‘zbekchada bo‘lsin.\n"
+        "- Strukturani saqla: satrlar ketma-ketligi va bo‘linmalar.\n\n"
+        "FAqat tarjima matnini chiqaring. Hech qanday sarlavha/ro‘yxat qo‘shmang."
+    )
+
+    chunks = chunk_text(translit)
+    parts = []
+    for idx, ch in enumerate(chunks, start=1):
+        prompt = BASE_PROMPT + f"\n(Bo‘lak {idx}/{len(chunks)})"
+        part = call_gemini_text(prompt, f"TRANSLITERATSIYA:\n{ch}", tries=3)
+        parts.append(part.strip())
+        short_sleep()
+
+    direct = "\n".join([p for p in parts if p]).strip()
+
+    # validator + retry (stronger)
+    if not translation_validator(translit, direct):
+        STRONG_PROMPT = (
+            BASE_PROMPT
+            + "\nQo‘shimcha talab: Matn uzun bo‘lsa ham TO‘LIQ davom ettiring. Kesib yubormang."
+        )
+        parts = []
+        for idx, ch in enumerate(chunks, start=1):
+            part = call_gemini_text(STRONG_PROMPT + f"\n(Bo‘lak {idx}/{len(chunks)})",
+                                    f"TRANSLITERATSIYA:\n{ch}", tries=3)
+            parts.append(part.strip())
+            short_sleep()
+        direct = "\n".join([p for p in parts if p]).strip()
+
+    return direct
+
+def generate_comment(translit: str, direct_translation: str) -> str:
+    """
+    Izohni bitta umumiy so‘rovda chiqaradi (ehtiyotkor).
+    """
+    PROMPT = (
+        "Siz tarixiy matnlar bilan ishlaydigan ehtiyotkor tadqiqotchisiz.\n"
+        "Sizga transliteratsiya va to‘g‘ridan-to‘g‘ri tarjima beriladi.\n\n"
+        "Vazifa: faqat 'Izoh' yozing.\n"
+        "Qoidalar:\n"
+        "- UYDIRMA QILMANG. Aniqlik bo‘lmasa shunday yozing.\n"
+        "- Ism/sana/joylarni taxmin qilmang.\n"
+        "- 6–12 jumla, juda cho‘zmay.\n"
+        "- Kontekst, terminlar, ehtimoliy tarixiy fon (agar matndan chiqsa).\n\n"
+        "FAqat izoh matnini chiqaring."
+    )
+    content = f"TRANSLITERATSIYA:\n{translit}\n\nTARJIMA:\n{direct_translation}"
+    return call_gemini_text(PROMPT, content, tries=3).strip()
 
 def translate_and_comment(translit: str) -> str:
     """
     Output ONLY:
-    1) To‘g‘ridan-to‘g‘ri tarjima (to‘liq, satrma-satr)
-    2) Izoh (ehtiyotkor, uydirma qilmasin)
+    1) To‘g‘ridan-to‘g‘ri tarjima
+    2) Izoh
     """
-    BASE_PROMPT = (
-        "Siz qadimiy qo‘lyozmalar tarjimoni va tarixiy matnlar bilan ishlaydigan mutaxassisiz.\n"
-        "Sizga TRANSLITERATSIYA MATNI beriladi.\n\n"
-        "Qoidalar (qat’iy):\n"
-        "- QISQARTIRMA! XULOSA QILMA! Matnni to‘liq tarjima qil.\n"
-        "- O‘qilmagan joyni taxmin qilma: [o‘qilmadi] yoki [?] ni saqla.\n"
-        "- Ism/son/sana: faqat ko‘ringanini tarjima qil, uydirma qilma.\n"
-        "- Tarjima oddiy o‘zbekchada bo‘lsin, satrma-satr (strukturani saqla).\n"
-        "- Keyin alohida 'Izoh' bo‘limida kontekst va tushuntirish ber, lekin aniq bo‘lmasa ehtiyotkor yoz.\n\n"
-        "Natija formati (aniq):\n"
-        "1) To‘g‘ridan-to‘g‘ri tarjima:\n"
-        "<TO‘LIQ TARJIMA>\n\n"
-        "2) Izoh:\n"
-        "<IZOH>\n"
-    )
+    direct = translate_direct_only(translit)
+    if not safe_text(direct):
+        raise RuntimeError("Tarjima bo‘sh chiqdi.")
 
-    # Chunk translate to avoid truncation
-    chunks = chunk_text(translit)
-    translated_chunks = []
+    izoh = generate_comment(translit, direct)
+    if not safe_text(izoh):
+        izoh = "Izoh: (hozircha chiqarilmadi — qayta urinib ko‘ring.)"
 
-    for idx, ch in enumerate(chunks, start=1):
-        prompt = BASE_PROMPT + f"\n(Bo‘lak {idx}/{len(chunks)})"
-        part = call_gemini_text(prompt, f"TRANSLITERATSIYA:\n{ch}", tries=3)
-        translated_chunks.append(part)
-        short_sleep()
-
-    combined = "\n\n".join(translated_chunks).strip()
-
-    # Validator + retry (stronger prompt)
-    if not translation_validator(translit, combined):
-        STRONG_PROMPT = (
-            BASE_PROMPT
-            + "\nQo‘shimcha qat’iy talab:\n"
-              "- Agar matn uzun bo‘lsa ham, tarjimani davom ettir.\n"
-              "- Hech qachon 2-3 jumlaga tushirib yuborma.\n"
-              "- Bo‘laklar bo‘yicha to‘liq tarjima ber.\n"
-        )
-        translated_chunks = []
-        for idx, ch in enumerate(chunks, start=1):
-            part = call_gemini_text(STRONG_PROMPT + f"\n(Bo‘lak {idx}/{len(chunks)})",
-                                    f"TRANSLITERATSIYA:\n{ch}", tries=3)
-            translated_chunks.append(part)
-            short_sleep()
-        combined = "\n\n".join(translated_chunks).strip()
-
-    return combined
+    return f"1) To‘g‘ridan-to‘g‘ri tarjima:\n{direct}\n\n2) Izoh:\n{izoh}"
 
 
 # =========================
@@ -453,9 +496,17 @@ def sb_get_or_create_profile(email: str) -> Profile:
     if data:
         return Profile(email=email, credits=int(data[0].get("credits") or 0))
 
-    # create new
     sb.table("profiles").insert({"email": email, "credits": NEW_USER_FREE_CREDITS}).execute()
     return Profile(email=email, credits=NEW_USER_FREE_CREDITS)
+
+def sb_get_credits(email: str) -> int:
+    sb_require()
+    email = email.strip().lower()
+    res = sb.table("profiles").select("credits").eq("email", email).limit(1).execute()
+    data = getattr(res, "data", None) or []
+    if not data:
+        return 0
+    return int(data[0].get("credits") or 0)
 
 def sb_set_credits(email: str, credits: int) -> int:
     sb_require()
@@ -469,16 +520,15 @@ def sb_set_credits(email: str, credits: int) -> int:
 def sb_consume_credits(email: str, n: int = 1) -> int:
     """
     Preferred: RPC consume_credits(p_email text, p_n int)
-    Fallback: atomic update with "credits = credits - n" and check in app.
-    Returns updated credits (may be negative if you bypass checks; we won't).
+    Fallback: CAS (compare-and-swap) update => safer than plain read+write.
+    Returns updated credits.
     """
     sb_require()
     email = email.strip().lower()
     n = int(n)
 
-    # Try RPC if exists
+    # Try RPC first
     try:
-        # expected function: public.consume_credits(p_email text, p_n int default 1) returns table (credits int)
         resp = sb.rpc("consume_credits", {"p_email": email, "p_n": n}).execute()
         data = getattr(resp, "data", None)
         if isinstance(data, list) and data and "credits" in data[0]:
@@ -488,9 +538,23 @@ def sb_consume_credits(email: str, n: int = 1) -> int:
     except Exception:
         pass
 
-    # Fallback: read current then update
+    # Fallback CAS (2 attempts)
+    for _ in range(2):
+        cur = sb_get_or_create_profile(email).credits
+        if cur < n:
+            return cur
+        newv = cur - n
+        try:
+            upd = sb.table("profiles").update({"credits": newv}).eq("email", email).eq("credits", cur).execute()
+            data = getattr(upd, "data", None) or []
+            if data:
+                return int(data[0].get("credits") or newv)
+        except Exception:
+            break
+
+    # last resort: plain update
     cur = sb_get_or_create_profile(email).credits
-    newv = cur - n
+    newv = max(0, cur - n)
     sb_set_credits(email, newv)
     return newv
 
@@ -507,26 +571,57 @@ def sb_refund_credits(email: str, n: int = 1) -> int:
             return int(data["credits"])
     except Exception:
         pass
+
+    # CAS add-back
+    for _ in range(2):
+        cur = sb_get_or_create_profile(email).credits
+        newv = cur + n
+        try:
+            upd = sb.table("profiles").update({"credits": newv}).eq("email", email).eq("credits", cur).execute()
+            data = getattr(upd, "data", None) or []
+            if data:
+                return int(data[0].get("credits") or newv)
+        except Exception:
+            break
+
     cur = sb_get_or_create_profile(email).credits
     newv = cur + n
     sb_set_credits(email, newv)
     return newv
 
-def sb_insert_report(email: str, doc_name: str, page_index: int, result_text: str):
+def sb_upsert_report(email: str, doc_name: str, page_index: int, result_text: str):
+    """
+    reports jadvali: email, doc_name, page_index, result_text, created_at, updated_at
+    on_conflict: email,doc_name,page_index (agar unique bo‘lsa)
+    """
     sb_require()
-    sb.table("reports").insert({
+    payload = {
         "email": email.strip().lower(),
         "doc_name": doc_name,
         "page_index": int(page_index),
         "result_text": result_text,
-        "created_at": now_iso(),
-    }).execute()
+        "updated_at": now_iso(),
+    }
+    try:
+        sb.table("reports").upsert(payload, on_conflict="email,doc_name,page_index").execute()
+        return
+    except Exception:
+        # fallback insert (dev)
+        try:
+            payload2 = dict(payload)
+            payload2["created_at"] = now_iso()
+            sb.table("reports").insert(payload2).execute()
+        except Exception:
+            pass
 
-def sb_insert_usage_log(email: str, filename: str, page_index: int, status: str, latency_ms: int, note: str = ""):
+def sb_insert_usage_log(email: str, doc_name: str, page_index: int, status: str, latency_ms: int, note: str = ""):
+    """
+    usage_logs jadvali: email, doc_name, page_index, status, latency_ms, note, created_at
+    """
     sb_require()
     sb.table("usage_logs").insert({
         "email": email.strip().lower(),
-        "filename": filename,
+        "doc_name": doc_name,
         "page_index": int(page_index),
         "status": status,
         "latency_ms": int(latency_ms),
@@ -536,7 +631,12 @@ def sb_insert_usage_log(email: str, filename: str, page_index: int, status: str,
 
 def sb_fetch_history(email: str, limit: int = HISTORY_LIMIT) -> List[Dict]:
     sb_require()
-    res = sb.table("reports").select("id, doc_name, page_index, created_at, result_text").eq("email", email.strip().lower()).order("created_at", desc=True).limit(limit).execute()
+    res = sb.table("reports") \
+        .select("id, doc_name, page_index, created_at, result_text") \
+        .eq("email", email.strip().lower()) \
+        .order("updated_at", desc=True) \
+        .limit(limit) \
+        .execute()
     return getattr(res, "data", None) or []
 
 
@@ -553,6 +653,7 @@ def ss_init():
     st.session_state.setdefault("translit_cache", {})  # page_index -> translit
     st.session_state.setdefault("active_page_idx", 0)
     st.session_state.setdefault("demo_pages_used", 0)
+    st.session_state.setdefault("strips_n", STRIPS_PER_PAGE_DEFAULT)
 
 def do_login(email: str):
     email = email.strip().lower()
@@ -584,7 +685,6 @@ def do_logout():
 def sidebar_auth():
     st.sidebar.markdown(f"## {APP_TITLE}")
 
-    # Status badges
     if st.session_state["logged_in"]:
         st.sidebar.markdown(f"<span class='badge'>✅ Logged in</span>", unsafe_allow_html=True)
     else:
@@ -608,14 +708,13 @@ def sidebar_auth():
             do_logout()
             st.rerun()
 
-    # Profile card
     if st.session_state["logged_in"]:
         st.sidebar.markdown(
             f"""
             <div class="soft-card">
               <div><b>{st.session_state["email"]}</b></div>
               <div class="muted">Kredit: <b>{st.session_state["credits"]}</b></div>
-              <div class="tiny">Premium: Word • Tahrir • Chat • History • Save results</div>
+              <div class="tiny">Premium: History • Save results</div>
             </div>
             """,
             unsafe_allow_html=True
@@ -632,6 +731,10 @@ def sidebar_auth():
             unsafe_allow_html=True
         )
 
+    # Google login removed / disabled entirely (as requested)
+    st.sidebar.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+    st.sidebar.caption("Google login hozircha yo‘q (Email-only).")
+
     st.sidebar.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
     # History
@@ -641,7 +744,7 @@ def sidebar_auth():
         hist = st.session_state.get("history", []) or []
         if q.strip():
             ql = q.strip().lower()
-            hist = [h for h in hist if ql in (h.get("doc_name","").lower() + " " + (h.get("result_text","").lower()))]
+            hist = [h for h in hist if ql in ((h.get("doc_name","") or "").lower() + " " + (h.get("result_text","") or "").lower())]
 
         if not hist:
             st.sidebar.caption("History yo‘q yoki topilmadi.")
@@ -649,8 +752,9 @@ def sidebar_auth():
             for h in hist[:HISTORY_LIMIT]:
                 title = f"{h.get('doc_name','doc')} • varaq {int(h.get('page_index',0))+1}"
                 if st.sidebar.button(title, use_container_width=True):
-                    st.session_state["active_page_idx"] = int(h.get("page_index", 0))
-                    st.session_state["results"][int(h.get("page_index",0))] = h.get("result_text","")
+                    pi = int(h.get("page_index", 0))
+                    st.session_state["active_page_idx"] = pi
+                    st.session_state["results"][pi] = h.get("result_text","")
                     st.rerun()
 
 
@@ -659,29 +763,24 @@ def sidebar_auth():
 # =========================
 
 def requirements_guard():
-    missing = []
-    if not GEMINI_API_KEY:
-        missing.append("GEMINI_API_KEY")
-    if not SUPABASE_URL:
-        missing.append("SUPABASE_URL")
-    if not SUPABASE_KEY:
-        missing.append("SUPABASE_KEY")
-    if missing:
-        st.error("Secrets yetishmayapti: " + ", ".join(missing))
-        st.stop()
     if not HAS_GEMINI:
         st.error("google-generativeai kutubxonasi topilmadi.")
         st.stop()
-    if not HAS_SUPABASE:
-        st.warning("supabase-py topilmadi. DB funksiyalar (kredit/history/save) ishlamasligi mumkin.")
+    if not GEMINI_API_KEY:
+        st.error("Secrets yetishmayapti: GEMINI_API_KEY")
+        st.stop()
+
+    # Supabase optional (demo ishlasin)
+    if not HAS_SUPABASE or not SUPABASE_URL or not SUPABASE_KEY:
+        st.warning("Supabase sozlanmagan: kredit/history/save ishlamasligi mumkin (demo ishlaydi).")
 
 def premium_banner():
     st.markdown(
         """
         <div class="premium-card">
-          <div><b>🔒 Premium funksiyalar</b></div>
-          <div class="muted">Demo rejimda natijani ko‘rishingiz mumkin. To‘liq funksiyalar uchun email bilan tizimga kiring.</div>
-          <div class="tiny">Word hisobot • Tahrir • AI Chat • History • Save results</div>
+          <div><b>🔒 Premium</b></div>
+          <div class="muted">Demo rejimda natijani ko‘rishingiz mumkin. Kredit va history uchun email bilan kiring.</div>
+          <div class="tiny">Save results • History • Kreditlar</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -689,8 +788,7 @@ def premium_banner():
 
 def file_uploader_block():
     st.markdown("### 📄 Fayl yuklash")
-    up = st.file_uploader("PDF yoki rasm (PNG/JPG)", type=["pdf", "png", "jpg", "jpeg"])
-    return up
+    return st.file_uploader("PDF yoki rasm (PNG/JPG)", type=["pdf", "png", "jpg", "jpeg"])
 
 def build_pages_from_upload(uploaded) -> Tuple[List[Image.Image], str]:
     filename = uploaded.name
@@ -702,7 +800,6 @@ def build_pages_from_upload(uploaded) -> Tuple[List[Image.Image], str]:
         pages = pdf_to_images(data, zoom=2.0)
         return pages, filename
 
-    # image
     img = Image.open(io.BytesIO(data)).convert("RGB")
     return [img], filename
 
@@ -710,11 +807,11 @@ def show_page_preview(pages: List[Image.Image], idx: int):
     idx = clamp(idx, 0, len(pages)-1)
     st.image(pages[idx], caption=f"Varaq {idx+1}", use_container_width=True)
 
-def render_copy_button(text: str, key: str):
-    # Streamlit clipboard: use st.code + small JS
+def render_copy_button(text: str):
+    # Show + clipboard
     st.code(text, language="markdown")
     b64 = base64.b64encode(text.encode("utf-8")).decode("utf-8")
-    st.components.v1.html(
+    components.html(
         f"""
         <button style="
           padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.18);
@@ -727,14 +824,12 @@ def render_copy_button(text: str, key: str):
 
 def can_user_analyze(n_pages: int) -> Tuple[bool, str]:
     if st.session_state["logged_in"]:
-        # must have credits
         if sb:
             credits = int(st.session_state.get("credits", 0))
             if credits < n_pages:
                 return False, f"Kredit yetarli emas. Sizda {credits}, kerak {n_pages}."
         return True, ""
     else:
-        # demo
         used = int(st.session_state.get("demo_pages_used", 0))
         remaining = FREE_DEMO_MAX_PAGES - used
         if n_pages > remaining:
@@ -744,7 +839,6 @@ def can_user_analyze(n_pages: int) -> Tuple[bool, str]:
 def consume_for_analysis(n_pages: int):
     if st.session_state["logged_in"] and sb:
         email = st.session_state["email"]
-        # pre-check in app
         if st.session_state["credits"] < n_pages:
             raise RuntimeError("Kredit yetarli emas.")
         newc = sb_consume_credits(email, n_pages)
@@ -760,22 +854,19 @@ def refund_for_failure(n_pages: int):
     else:
         st.session_state["demo_pages_used"] = max(0, int(st.session_state.get("demo_pages_used", 0)) - n_pages)
 
-def analyze_page(pil_img: Image.Image, filename: str, page_index: int) -> Tuple[str, str]:
+def analyze_page(pil_img: Image.Image, filename: str, page_index: int, strips_n: int) -> Tuple[str, str, int]:
     """
-    Returns: (result_text, translit_text)
+    Returns: (result_text, translit_text, latency_ms)
     """
     t0 = time.time()
 
-    # preprocess -> tiling OCR
     proc = preprocess_for_ocr(pil_img)
-    translit = transcribe_full_page_from_image(proc, tries=OCR_TRIES)
 
+    translit = transcribe_full_page_from_image(proc, strips_n=strips_n, tries=OCR_TRIES)
     if not safe_text(translit):
         raise RuntimeError("Transliteratsiya bo‘sh chiqdi (OCR coverage past).")
 
-    # translation + izoh (text-only)
     result = translate_and_comment(translit)
-
     if not safe_text(result):
         raise RuntimeError("Tarjima natijasi bo‘sh chiqdi.")
 
@@ -785,15 +876,15 @@ def analyze_page(pil_img: Image.Image, filename: str, page_index: int) -> Tuple[
     if st.session_state["logged_in"] and sb:
         email = st.session_state["email"]
         try:
-            sb_insert_report(email, filename, page_index, result)
+            sb_upsert_report(email, filename, page_index, result)
         except Exception:
             pass
         try:
-            sb_insert_usage_log(email, filename, page_index, "ok", latency, note="analyze")
+            sb_insert_usage_log(email, filename, page_index, "ok", latency, note=f"strips={strips_n}")
         except Exception:
             pass
 
-    return result, translit
+    return result, translit, latency
 
 
 def main():
@@ -804,10 +895,8 @@ def main():
 
     sidebar_auth()
 
-    # Header
     st.markdown(f"# {APP_TITLE}")
-    st.caption("Qadimiy hujjatlarni yuklang va AI yordamida to‘liq tarjima + izoh oling. (Aniqlik 1-o‘rinda)")
-
+    st.caption("Qadimiy hujjatlarni yuklang va AI yordamida TO‘LIQ tarjima + izoh oling. (Aniqlik 1-o‘rinda)")
     premium_banner()
 
     uploaded = file_uploader_block()
@@ -821,7 +910,6 @@ def main():
         st.error(str(e))
         st.stop()
 
-    # Controls
     left, right = st.columns([1.05, 1.35], gap="large")
 
     with left:
@@ -846,7 +934,6 @@ def main():
             if mode == "Faqat tanlangan sahifa":
                 selected_indices = [st.session_state["active_page_idx"]]
             else:
-                # Multi-select indices
                 default = [st.session_state["active_page_idx"]]
                 selected_indices = st.multiselect(
                     "Sahifalar",
@@ -860,14 +947,13 @@ def main():
             selected_indices = [0]
 
         st.markdown("### ⚙️ Sifat sozlamalari")
-        strips = st.slider("OCR bo‘laklar soni (ko‘proq = to‘liqroq, sekinroq)", 7, 14, STRIPS_PER_PAGE_DEFAULT)
-        # store runtime override
-        global STRIPS_PER_PAGE_DEFAULT
-        STRIPS_PER_PAGE_DEFAULT = strips
+        st.session_state["strips_n"] = st.slider(
+            "OCR bo‘laklar soni (ko‘proq = to‘liqroq, sekinroq)",
+            7, 14, int(st.session_state.get("strips_n", STRIPS_PER_PAGE_DEFAULT))
+        )
+        strips_n = int(st.session_state["strips_n"])
+        st.caption("Tavsiya: agar tarjima qisqa chiqsa — bo‘lak sonini 12–14 ga oshiring.")
 
-        st.caption("Tavsiya: agar tarjima qisqa chiqsa — bo‘lak sonini oshiring (12–14).")
-
-        # Analyze button
         ok, msg = can_user_analyze(len(selected_indices))
         if not ok:
             st.warning(msg)
@@ -876,27 +962,24 @@ def main():
 
         if run:
             try:
-                # consume credits upfront (safe UX), refund if page fails
                 consume_for_analysis(len(selected_indices))
             except Exception as e:
                 st.error(str(e))
                 st.stop()
 
-            progress = st.progress(0)
+            progress = st.progress(0.0)
             status = st.empty()
             success = 0
 
             for k, idx in enumerate(selected_indices, start=1):
                 status.info(f"Varaq {idx+1}: o‘qish → tarjima...")
                 try:
-                    res_text, translit = analyze_page(pages[idx], filename, idx)
+                    res_text, translit, latency = analyze_page(pages[idx], filename, idx, strips_n=strips_n)
                     st.session_state["results"][idx] = res_text
                     st.session_state["translit_cache"][idx] = translit
                     success += 1
                 except Exception as e:
-                    # refund 1 credit for failed page
                     refund_for_failure(1)
-                    # log error
                     if st.session_state["logged_in"] and sb:
                         try:
                             sb_insert_usage_log(st.session_state["email"], filename, idx, "error", 0, note=str(e))
@@ -904,23 +987,20 @@ def main():
                             pass
                     st.error(f"Varaq {idx+1} xato: {e}")
 
-                progress.progress(int(k / len(selected_indices) * 100))
+                progress.progress(k / max(1, len(selected_indices)))
                 short_sleep()
 
             status.success(f"Tayyor: {success}/{len(selected_indices)} sahifa.")
 
-            # refresh history
             if st.session_state["logged_in"] and sb:
                 st.session_state["history"] = sb_fetch_history(st.session_state["email"], HISTORY_LIMIT)
 
     with right:
         st.markdown("### 🧾 Natija")
 
-        active = st.session_state.get("active_page_idx", 0)
-        # If analyzed, show that page result; else show most recent from results/history
+        active = int(st.session_state.get("active_page_idx", 0))
         result_text = st.session_state["results"].get(active, "")
 
-        # navigation
         nav1, nav2, nav3 = st.columns([1, 1, 2])
         with nav1:
             if st.button("⬅ Prev", use_container_width=True, disabled=(active <= 0)):
@@ -935,9 +1015,8 @@ def main():
 
         st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-        # If not available in session, try history
+        # If not available in session, try history (logged in)
         if not result_text and st.session_state["logged_in"] and sb:
-            # find history by page index + filename
             for h in st.session_state.get("history", []):
                 if int(h.get("page_index", -1)) == int(active) and (h.get("doc_name") == filename):
                     result_text = h.get("result_text", "")
@@ -948,7 +1027,6 @@ def main():
         else:
             st.markdown("<div class='result-wrap'>", unsafe_allow_html=True)
 
-            # search within results
             q = st.text_input("🔎 Natijadan qidirish", value="", placeholder="keyword...")
             if q.strip():
                 ql = q.strip().lower()
@@ -960,19 +1038,18 @@ def main():
                 else:
                     st.warning("Topilmadi.")
 
-            render_copy_button(result_text, key=f"copy_{active}")
+            render_copy_button(result_text)
 
-            # Optional translit view (debug / pro users)
             with st.expander("🔍 Transliteratsiyani ko‘rish (debug)", expanded=False):
                 tl = st.session_state["translit_cache"].get(active, "")
-                if not tl and st.session_state["logged_in"] and sb:
-                    st.caption("Bu sahifa transliteratsiyasi sessionda yo‘q (faqat natija saqlangan).")
+                if not tl:
+                    st.caption("Bu sahifa transliteratsiyasi sessionda yo‘q (faqat natija saqlangan bo‘lishi mumkin).")
                 else:
                     st.text_area("TRANSLITERATSIYA", value=tl, height=260)
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-        st.caption("Eslatma: Qo‘lyozma juda mayda bo‘lsa, OCR bo‘laklar sonini oshiring (12–14) va qayta sinang.")
+        st.caption("Eslatma: qo‘lyozma juda mayda bo‘lsa, OCR bo‘laklar sonini 12–14 ga oshiring va qayta sinang.")
 
 
 # =========================
