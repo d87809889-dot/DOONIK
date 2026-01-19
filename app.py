@@ -2,12 +2,13 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image, ImageEnhance, ImageOps
 import pypdfium2 as pdfium
-import io, gc, base64
+
+import io, gc, base64, time, random
 from docx import Document
 from supabase import create_client
 
 # ==========================================
-# 1. TIZIM VA SEO SOZLAMALARI
+# 1. TIZIM SOZLAMALARI
 # ==========================================
 st.set_page_config(
     page_title="Manuscript AI - Open Academic Portal",
@@ -17,7 +18,7 @@ st.set_page_config(
 )
 
 # =========================
-# THEME SWITCH (ALTERNATIV)
+# THEME
 # =========================
 THEME = "DARK_GOLD"  # "DARK_GOLD" | "PARCHMENT" | "MIDNIGHT"
 
@@ -60,7 +61,7 @@ THEMES = {
 C = THEMES.get(THEME, THEMES["DARK_GOLD"])
 
 # ==========================================
-# 1.1 PROFESSIONAL UI (FIXED CONTRAST + NO WHITE GAP + STICKY IMAGE)
+# UI CSS
 # ==========================================
 st.markdown(f"""
 <style>
@@ -76,7 +77,6 @@ st.markdown(f"""
   --card-text: {C["card_text"]};
 }}
 
-/* --- White gap fix (scroll pastga tushganda oq bo'shliq chiqmasin) --- */
 html, body {{
   background: var(--app-bg) !important;
   margin: 0 !important;
@@ -86,43 +86,27 @@ html, body {{
   background: var(--app-bg) !important;
   min-height: 100vh !important;
 }}
-/* Container paddings (ortiqcha past bo'shliqni kamaytirish) */
 div[data-testid="stAppViewContainer"] .main .block-container {{
   padding-top: 3.25rem !important;
   padding-bottom: 1.25rem !important;
 }}
 
-/* Streamlit reklama/branding elementlari */
 footer {{visibility: hidden !important;}}
 .stAppDeployButton {{display:none !important;}}
 #stDecoration {{display:none !important;}}
+header[data-testid="stHeader"] {{ background: rgba(0,0,0,0) !important; }}
 
-/* Header transparent, lekin matn kontrastli */
-header[data-testid="stHeader"] {{
-  background: rgba(0,0,0,0) !important;
-}}
-
-/* Sidebar */
 section[data-testid="stSidebar"] {{
   background: var(--sidebar-bg) !important;
   border-right: 2px solid var(--gold) !important;
 }}
-/* Sidebar ichidagi matnlar ko'rinmay qolmasin */
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3,
-section[data-testid="stSidebar"] h4,
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] span {{
+section[data-testid="stSidebar"] * {{
   color: var(--text) !important;
 }}
-/* Sidebar caption */
 section[data-testid="stSidebar"] .stCaption {{
   color: var(--muted) !important;
 }}
 
-/* Main title & headings: 2-rasmda ko'rinmay qolgan joyni tuzatadi */
 h1, h2, h3, h4 {{
   color: var(--gold) !important;
   font-family: 'Georgia', serif;
@@ -130,12 +114,10 @@ h1, h2, h3, h4 {{
   padding-bottom: 8px !important;
   text-align: center !important;
 }}
-/* Subtitle */
 .stMarkdown p {{
   color: var(--muted) !important;
 }}
 
-/* Buttons (ko'proq jalb qiladigan) */
 .stButton>button {{
   background: linear-gradient(135deg, var(--sidebar-bg) 0%, #1e3a8a 100%) !important;
   color: var(--gold) !important;
@@ -151,19 +133,13 @@ h1, h2, h3, h4 {{
   filter: brightness(1.05);
 }}
 
-/* Inputs kontrast */
 .stTextInput input, .stSelectbox select, .stTextArea textarea {{
   background-color: rgba(255,255,255,0.06) !important;
   color: var(--text) !important;
   border: 1px solid rgba(197,160,89,0.55) !important;
   border-radius: 10px !important;
 }}
-.stTextArea textarea {{
-  background-color: rgba(255,255,255,0.06) !important;
-  color: var(--text) !important;
-}}
 
-/* Result card */
 .result-box {{
   background-color: var(--card) !important;
   padding: 20px !important;
@@ -173,9 +149,9 @@ h1, h2, h3, h4 {{
   color: var(--card-text) !important;
   font-size: 16px;
   line-height: 1.75;
+  white-space: pre-wrap;
 }}
 
-/* Premium alert */
 .premium-alert {{
   background: rgba(255,243,224,1);
   border: 1px solid #ffb74d;
@@ -187,7 +163,6 @@ h1, h2, h3, h4 {{
   margin-bottom: 12px;
 }}
 
-/* Sticky image (2-rasmdagi chap bo'sh maydon muammosini UX bilan yo'qotadi) */
 .sticky-preview {{
   position: sticky;
   top: 4.6rem;
@@ -208,20 +183,11 @@ h1, h2, h3, h4 {{
   transform-origin: center;
   cursor: zoom-in;
 }}
-
-/* Mobil optimizatsiya */
-@media (max-width: 768px) {{
-  div[data-testid="stAppViewContainer"] .main .block-container {{
-    padding-top: 3.5rem !important;
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
-  }}
-}}
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CORE SERVICES (SUPABASE & AI MOTOR)
+# 2) CORE SERVICES
 # ==========================================
 @st.cache_resource
 def get_db():
@@ -229,16 +195,78 @@ def get_db():
 
 db = get_db()
 
-# MODELNI O'ZGARTIRMAYMIZ (sizning talabingiz)
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel(model_name='gemini-flash-latest')
+model = genai.GenerativeModel(model_name="gemini-flash-latest")  # o'zgarmaydi
 
-# --- SESSYA HOLATI ---
+# ==========================================
+# 3) SESSION STATE
+# ==========================================
 if "auth" not in st.session_state: st.session_state.auth = False
 if "u_email" not in st.session_state: st.session_state.u_email = "Mehmon"
 
+if "imgs" not in st.session_state: st.session_state.imgs = []
+if "results" not in st.session_state: st.session_state.results = {}
+if "chats" not in st.session_state: st.session_state.chats = {}
+if "last_fn" not in st.session_state: st.session_state.last_fn = None
+
+# ✅ Barqarorlik: tugma 2 marta ishlamasin
+if "is_running" not in st.session_state:
+    st.session_state.is_running = False
+
+# ✅ Barqarorlik: rate-limitni yumshatish
+def throttle(min_interval_sec: float = 2.2):
+    last = st.session_state.get("_last_api_call_ts", 0.0)
+    now = time.time()
+    wait = (last + min_interval_sec) - now
+    if wait > 0:
+        time.sleep(wait)
+    st.session_state["_last_api_call_ts"] = time.time()
+
+def call_gemini_with_retry(prompt: str, payloads: list[dict], tries: int = 7) -> str:
+    last_err = None
+    for i in range(tries):
+        try:
+            throttle(2.2)  # ✅ majburiy interval
+            resp = model.generate_content(
+                [prompt, *payloads],
+                generation_config={
+                    "max_output_tokens": 1600,  # ✅ hozir: tarjima+izoh uchun yetarli va yengil
+                    "temperature": 0.2,
+                }
+            )
+            return getattr(resp, "text", "") or ""
+        except Exception as e:
+            last_err = e
+            msg = str(e).lower()
+            if ("429" in msg) or ("rate" in msg) or ("quota" in msg) or ("resource" in msg):
+                sleep_s = min(25, (2 ** i)) + random.uniform(0.4, 1.2)
+                time.sleep(sleep_s)
+                continue
+            raise
+    raise RuntimeError("Gemini limit (429): kvota/rate limit. Keyinroq qayta urinib ko‘ring.") from last_err
+
+def image_to_payload(img: Image.Image) -> dict:
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return {"mime_type": "image/jpeg", "data": base64.b64encode(buf.getvalue()).decode("utf-8")}
+
+def safe_get_credits(email: str) -> int:
+    try:
+        res = db.table("profiles").select("credits").eq("email", email).single().execute()
+        return int(res.data["credits"]) if res.data and "credits" in res.data else 0
+    except Exception:
+        return 0
+
+def safe_decrement_credit(email: str, n: int = 1) -> None:
+    # Minimal va xavfsiz: avval o‘qiydi, keyin update qiladi (eski kodingizdagi usul).
+    try:
+        cur = safe_get_credits(email)
+        db.table("profiles").update({"credits": max(cur - n, 0)}).eq("email", email).execute()
+    except Exception:
+        pass
+
 # ==========================================
-# 3. SIDEBAR (LOGIN + PARAMETRLAR)
+# 4) SIDEBAR
 # ==========================================
 with st.sidebar:
     st.markdown("<h2 style='text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
@@ -249,19 +277,15 @@ with st.sidebar:
         email_in = st.text_input("Email", placeholder="example@mail.com")
         pwd_in = st.text_input("Parol", type="password", placeholder="****")
         if st.button("KIRISH"):
-            if pwd_in == st.secrets["APP_PASSWORD"]:
+            if pwd_in == st.secrets.get("APP_PASSWORD", ""):
                 st.session_state.auth = True
-                st.session_state.u_email = email_in
+                st.session_state.u_email = (email_in or "").strip() or "Foydalanuvchi"
                 st.rerun()
             else:
                 st.error("Xato!")
     else:
         st.write(f"👤 **Foydalanuvchi:** `{st.session_state.u_email}`")
-        try:
-            res = db.table("profiles").select("credits").eq("email", st.session_state.u_email).single().execute()
-            live_credits = res.data["credits"] if res.data else 0
-        except:
-            live_credits = 0
+        live_credits = safe_get_credits(st.session_state.u_email)
         st.metric("💳 Kreditlar", f"{live_credits} sahifa")
         if st.button("🚪 TIZIMDAN CHIQISH"):
             st.session_state.auth = False
@@ -275,37 +299,40 @@ with st.sidebar:
     contrast = st.slider("Kontrast:", 0.5, 3.0, 1.2)
 
 # ==========================================
-# 4. ASOSIY INTERFEYS
+# 5) MAIN
 # ==========================================
 st.title("📜 Manuscript AI Center")
 st.markdown("<p style='text-align:center;'>Qadimiy hujjatlarni yuklang va AI yordamida tahlil qiling.</p>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Faylni yuklang", type=['pdf', 'png', 'jpg', 'jpeg'], label_visibility="collapsed")
-
-if 'imgs' not in st.session_state: st.session_state.imgs = []
-if 'results' not in st.session_state: st.session_state.results = {}
-if 'chats' not in st.session_state: st.session_state.chats = {}
+uploaded_file = st.file_uploader("Faylni yuklang", type=["pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
 
 if uploaded_file:
-    if st.session_state.get('last_fn') != uploaded_file.name:
-        with st.spinner('Preparing...'):
+    # load/render once per file
+    if st.session_state.last_fn != uploaded_file.name:
+        with st.spinner("Preparing..."):
             file_bytes = uploaded_file.getvalue()
             imgs = []
             if uploaded_file.type == "application/pdf":
                 pdf = pdfium.PdfDocument(file_bytes)
                 for i in range(min(len(pdf), 20)):
                     imgs.append(pdf[i].render(scale=2.0).to_pil())
-                pdf.close()
+                try:
+                    pdf.close()
+                except Exception:
+                    pass
             else:
                 imgs.append(Image.open(io.BytesIO(file_bytes)))
 
-            st.session_state.imgs, st.session_state.last_fn = imgs, uploaded_file.name
-            st.session_state.results, st.session_state.chats = {}, {}
+            st.session_state.imgs = imgs
+            st.session_state.last_fn = uploaded_file.name
+            st.session_state.results = {}
+            st.session_state.chats = {}
             gc.collect()
 
+    # preprocess
     processed_imgs = []
     for img in st.session_state.imgs:
-        img = ImageOps.exif_transpose(img)  # rotation / exif fix (muammo kamayadi)
+        img = ImageOps.exif_transpose(img)
         p_img = ImageEnhance.Brightness(img).enhance(brightness)
         p_img = ImageEnhance.Contrast(p_img).enhance(contrast)
         processed_imgs.append(p_img)
@@ -313,42 +340,55 @@ if uploaded_file:
     selected_indices = st.multiselect(
         "Sahifalarni tanlang:",
         options=range(len(processed_imgs)),
-        default=[0],
+        default=[0] if processed_imgs else [],
         format_func=lambda x: f"{x+1}-sahifa"
     )
 
-    # Preview (tahlildan oldin)
-    if not st.session_state.results:
-        cols = st.columns(min(len(selected_indices), 4) if selected_indices else 1)
+    # Preview
+    if not st.session_state.results and selected_indices:
+        cols = st.columns(min(len(selected_indices), 4))
         for i, idx in enumerate(selected_indices):
             with cols[i % min(len(cols), 4)]:
                 st.image(processed_imgs[idx], caption=f"Varaq {idx+1}", use_container_width=True)
 
-    if st.button('✨ AKADEMIK TAHLILNI BOSHLASH'):
-        prompt = f"Siz Manuscript AI mutaxassisiz. {lang} va {era} uslubidagi manbani tahlil qiling: 1.Paleografiya. 2.Transliteratsiya. 3.Tarjima. 4.Arxaik lug'at. 5.Izoh."
-        for idx in selected_indices:
-            with st.status(f"Sahifa {idx+1}...") as s:
-                try:
-                    buf = io.BytesIO()
-                    processed_imgs[idx].save(buf, format="JPEG", quality=90)
-                    payload = {"mime_type": "image/jpeg", "data": base64.b64encode(buf.getvalue()).decode("utf-8")}
-                    response = model.generate_content([prompt, payload])
-                    st.session_state.results[idx] = response.text
+    # ✅ Siz xohlagan qisqa prompt: faqat tarjima + izoh
+    def build_prompt(_lang: str, _era: str) -> str:
+        return (
+            "Siz qadimiy qo‘lyozmalar bilan ishlovchi tarjimonsiz.\n"
+            f"Hint: til={_lang}, xat uslubi={_era}.\n\n"
+            "Vazifa: rasm matnini o‘qib, faqat quyidagi 2 bo‘limni yozing.\n"
+            "Qoidalar: qisqartirmang; o‘qilmasa [o‘qilmadi] yoki [?] yozing; uydirma qilmang.\n\n"
+            "FORMAT (aniq):\n"
+            "1) To‘g‘ridan-to‘g‘ri tarjima (satrma-satr):\n"
+            "2) Izoh (kontekst; aniq bo‘lmasa ehtiyot bo‘l):\n"
+        )
 
-                    if st.session_state.auth:
-                        try:
-                            res = db.table("profiles").select("credits").eq("email", st.session_state.u_email).single().execute()
-                            live_credits = res.data["credits"] if res.data else 0
-                        except:
-                            live_credits = 0
-                        db.table("profiles").update({"credits": max(live_credits - 1, 0)}).eq("email", st.session_state.u_email).execute()
+    run = st.button("✨ AKADEMIK TAHLILNI BOSHLASH", disabled=st.session_state.is_running or (not selected_indices))
+    if run:
+        st.session_state.is_running = True
+        try:
+            prompt = build_prompt(lang, era)
 
-                    s.update(label="Tayyor!", state="complete")
-                except Exception as e:
-                    st.error(f"Xato: {e}")
-        st.rerun()
+            for idx in selected_indices:
+                with st.status(f"Sahifa {idx+1}...") as s:
+                    try:
+                        payload = image_to_payload(processed_imgs[idx])
+                        text = call_gemini_with_retry(prompt, [payload], tries=7)
+                        st.session_state.results[idx] = text.strip() if text else "[Natija bo‘sh chiqdi]"
 
-    # --- NATIJALAR ---
+                        if st.session_state.auth:
+                            safe_decrement_credit(st.session_state.u_email, 1)
+
+                        s.update(label="Tayyor!", state="complete")
+                    except Exception as e:
+                        st.session_state.results[idx] = f"Xato: {e}"
+                        s.update(label="Xato", state="error")
+        finally:
+            st.session_state.is_running = False
+            gc.collect()
+            st.rerun()
+
+    # RESULTS
     if st.session_state.results:
         st.divider()
         final_doc = ""
@@ -360,14 +400,11 @@ if uploaded_file:
             c1, c2 = st.columns([1, 1.35], gap="large")
 
             with c1:
-                # Sticky + magnifier ishlashi uchun HTML img qo'yamiz (layoutni ham chiroyli qiladi)
-                b = io.BytesIO()
-                processed_imgs[idx].save(b, format="JPEG", quality=90)
-                b64 = base64.b64encode(b.getvalue()).decode("utf-8")
+                b64_payload = image_to_payload(processed_imgs[idx])["data"]
                 st.markdown(
                     f"""
                     <div class="sticky-preview">
-                        <img src="data:image/jpeg;base64,{b64}" alt="page {idx+1}" />
+                        <img src="data:image/jpeg;base64,{b64_payload}" alt="page {idx+1}" />
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -377,9 +414,17 @@ if uploaded_file:
                 st.markdown(f"<div class='result-box'>{res}</div>", unsafe_allow_html=True)
 
                 if not st.session_state.auth:
-                    st.markdown("<div class='premium-alert'>🔒 Word hisobotni yuklab olish va AI Chat uchun tizimga kiring!</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<div class='premium-alert'>🔒 Word hisobot va AI Chat uchun tizimga kiring!</div>",
+                        unsafe_allow_html=True
+                    )
                 else:
-                    st.session_state.results[idx] = st.text_area(f"Tahrir ({idx+1}):", value=res, height=350, key=f"ed_{idx}")
+                    st.session_state.results[idx] = st.text_area(
+                        f"Tahrir ({idx+1}):",
+                        value=st.session_state.results[idx],
+                        height=320,
+                        key=f"ed_{idx}"
+                    )
                     final_doc += f"\n\n--- PAGE {idx+1} ---\n{st.session_state.results[idx]}"
 
                     st.session_state.chats.setdefault(idx, [])
@@ -391,13 +436,18 @@ if uploaded_file:
                     if st.button(f"So'rash {idx+1}", key=f"btn_{idx}"):
                         if user_q:
                             with st.spinner("..."):
-                                chat_res = model.generate_content([f"Doc: {st.session_state.results[idx]}\nQ: {user_q}"])
-                                st.session_state.chats[idx].append({"q": user_q, "a": chat_res.text})
+                                chat_text = call_gemini_with_retry(
+                                    f"Matn:\n{st.session_state.results[idx]}\n\nSavol: {user_q}\nJavobni o‘zbekcha, qisqa va aniq yoz.",
+                                    [],
+                                    tries=6
+                                )
+                                st.session_state.chats[idx].append({"q": user_q, "a": chat_text})
                                 st.rerun()
 
             st.markdown("---")
 
-        if st.session_state.auth and final_doc:
+        # Word export (faqat auth)
+        if st.session_state.auth and final_doc.strip():
             doc = Document()
             doc.add_paragraph(final_doc)
             bio = io.BytesIO()
