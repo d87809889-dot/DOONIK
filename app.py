@@ -5,9 +5,9 @@ import google.generativeai as genai
 from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 import pypdfium2 as pdfium
 
-import io, gc, base64, time, random, html, re
+import io, gc, base64, time, random, html, re, threading
 from datetime import datetime
-from collections import Counter
+from collections import Counter, deque
 
 from docx import Document
 from docx.shared import Pt
@@ -32,8 +32,13 @@ THEME = "DARK_GOLD"
 DEMO_LIMIT_PAGES = 3
 STARTER_CREDITS = 10
 HISTORY_LIMIT = 20
-BATCH_DELAY_RANGE = (0.8, 1.6)
 MAX_OUT_TOKENS = 4096
+
+# Gemini free limits (siz aytgan):
+GEMINI_RPM_LIMIT = 15
+SAFE_RPM = 12          # retrylar uchun xavfsizroq (tavsiya)
+RATE_WINDOW_SEC = 60
+
 
 # ==========================================
 # 3) THEMES
@@ -208,6 +213,35 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel(model_name="gemini-flash-latest")  # ✅ o'zgarmaydi
 
 
+# ========= Global Rate Limiter (all users in this process) =========
+class RateLimiter:
+    def __init__(self, rpm: int, window_sec: int = 60):
+        self.rpm = max(1, int(rpm))
+        self.window = int(window_sec)
+        self.lock = threading.Lock()
+        self.ts = deque()
+
+    def wait_for_slot(self):
+        while True:
+            with self.lock:
+                now = time.monotonic()
+                while self.ts and (now - self.ts[0]) > self.window:
+                    self.ts.popleft()
+
+                if len(self.ts) < self.rpm:
+                    self.ts.append(now)
+                    return
+
+                sleep_for = (self.window - (now - self.ts[0])) + 0.05
+            time.sleep(max(0.2, sleep_for))
+
+@st.cache_resource
+def get_rate_limiter():
+    return RateLimiter(rpm=SAFE_RPM, window_sec=RATE_WINDOW_SEC)
+
+rate_limiter = get_rate_limiter()
+
+
 # ==========================================
 # 6) STATE
 # ==========================================
@@ -287,23 +321,42 @@ def parse_pages(spec: str, max_n: int) -> list[int]:
             continue
     return sorted(out) if out else ([0] if max_n > 0 else [])
 
-def call_gemini_with_retry(prompt: str, payloads: list[dict], tries: int = 3) -> str:
+def call_gemini_with_retry(prompt: str, payloads: list[dict], tries: int = 6) -> str:
+    """
+    Global RPM limiter + exponential backoff.
+    """
     last_err = None
-    for i in range(tries):
+    for attempt in range(tries):
         try:
+            rate_limiter.wait_for_slot()  # ✅ HARD GATE
+
             resp = model.generate_content(
                 [prompt, *payloads],
                 generation_config={"max_output_tokens": MAX_OUT_TOKENS, "temperature": 0.2}
             )
             return getattr(resp, "text", "") or ""
+
         except Exception as e:
             last_err = e
             msg = str(e).lower()
-            if ("429" in msg) or ("rate" in msg) or ("quota" in msg) or ("resource" in msg):
-                time.sleep((2 ** i) + random.random())
+
+            is_rate = (
+                "429" in msg or "rate" in msg or "quota" in msg
+                or "resource exhausted" in msg or "exhausted" in msg
+            )
+
+            if is_rate:
+                base = min(45, (2 ** attempt))
+                sleep_s = base + random.uniform(0.4, 1.4)
+                if attempt >= 2:
+                    sleep_s += random.uniform(2.0, 4.0)
+                time.sleep(sleep_s)
                 continue
+
             raise
+
     raise RuntimeError("So'rovlar ko'p (429). Birozdan keyin qayta urinib ko'ring.") from last_err
+
 
 def ensure_profile(email: str) -> None:
     try:
@@ -434,47 +487,34 @@ def aggregate_detected_meta(results: dict[int, str]) -> dict:
 
 
 # ==========================================
-# 7.1) MINIMAL PROMPTS (only translit -> direct translation + izoh)
+# SINGLE REQUEST PROMPT
 # ==========================================
-def build_prompts(hint_lang: str, hint_era: str) -> tuple[str, str]:
-    # READ: faqat transliteratsiya
-    p_read = (
-        "Siz qo‘lyozma o‘qish bo‘yicha mutaxassissiz.\n"
-        "Vazifa: rasm ichidagi matnni maksimal to‘liq TRANSLITERATSIYA qiling.\n"
-        "Qoidalar: qisqartirmang; o‘qilmasa [o‘qilmadi] yoki [?] yozing; har satr alohida qator.\n"
-        f"Hint: til='{hint_lang or 'yo‘q'}', xat='{hint_era or 'yo‘q'}'.\n\n"
-        "FORMAT (aniq shunday):\n"
-        "1) Transliteratsiya:\n"
-        "<satrma-satr matn>\n"
-    )
+def build_single_prompt(hint_lang: str, hint_era: str, auto: bool = True) -> str:
+    hl = hint_lang or "yo‘q"
+    he = hint_era or "yo‘q"
 
-    # ANALYZE: faqat 2) tarjima + 6) izoh
-    p_an = (
-        "Siz Manuscript AI tarjimonisiz.\n"
-        "Vazifa: berilgan transliteratsiya asosida faqat 2 bo‘lim chiqaring.\n"
-        "Qoidalar: uydirmang; ism/son/sana/joyni aynan transliteratsiyadagidek saqlang.\n\n"
-        "FORMAT (aniq shunday):\n"
+    return (
+        "Siz qo‘lyozma (manuscript) o‘qish va tarjima bo‘yicha mutaxassissiz.\n"
+        "Vazifa: rasm ichidagi matnni o‘qing va faqat quyidagi bo‘limlarda chiqaring.\n\n"
+        "QOIDALAR:\n"
+        "- Hech narsa uydirmang.\n"
+        "- O‘qilmagan joy: [o‘qilmadi] yoki [?].\n"
+        "- Ism/son/sana/joy nomlarini aynan matndek saqlang.\n"
+        "- Transliteratsiya satrma-satr bo‘lsin.\n"
+        "- Tarjima oddiy o‘zbekcha, to‘liq.\n\n"
+        f"HINTLAR: til='{hl}', xat uslubi='{he}'. Agar hint 'yo‘q' bo‘lsa, o‘zingiz aniqlang.\n\n"
+        "FORMAT (ANIQ SHU TARTIBDA):\n"
+        "0) Tashxis:\n"
+        "Til: <aniqlangan til yoki Noma'lum>\n"
+        "Xat uslubi: <aniqlangan xat yoki Noma'lum>\n"
+        "Ishonchlilik: <Yuqori/O‘rtacha/Past>\n\n"
+        "1) Transliteratsiya:\n"
+        "<satrma-satr matn>\n\n"
         "2) To‘g‘ridan-to‘g‘ri tarjima:\n"
         "<oddiy o‘zbekcha, to‘liq>\n\n"
         "6) Izoh:\n"
-        "<kontekst; aniq bo‘lmasa ehtiyot bo‘l>\n"
+        "<kontekst va noaniqliklar; ehtiyotkor izoh>\n"
     )
-    return p_read, p_an
-
-def _extract_translit(read_text: str) -> str:
-    if not read_text:
-        return ""
-    m = re.search(r"1\)\s*Transliteratsiya\s*:?\s*\n?([\s\S]+)$", read_text, flags=re.IGNORECASE)
-    if m:
-        return m.group(1).strip()
-    # fallback: hammasini qaytaramiz (ba'zan model headingni buzadi)
-    return read_text.strip()
-
-def has_min_sections(text: str) -> bool:
-    if not text:
-        return False
-    t = text.lower()
-    return ("2) to" in t) and ("6) izoh" in t)
 
 
 # ==========================================
@@ -817,7 +857,7 @@ if not st.session_state.results and selected_indices:
 
 
 # ==========================================
-# RUN analysis
+# RUN analysis (1 request per page)
 # ==========================================
 if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
     if not selected_indices:
@@ -826,7 +866,6 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
 
     hint_lang = "" if (auto_detect or lang == "Noma'lum") else lang
     hint_era = "" if (auto_detect or era == "Noma'lum") else era
-    p_read, p_an = build_prompts(hint_lang, hint_era)
 
     total = len(selected_indices)
     done = 0
@@ -845,7 +884,12 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
     upd()
 
     for idx in selected_indices:
-        time.sleep(random.uniform(*BATCH_DELAY_RANGE))
+        # ✅ Agar bu sahifa oldin natija olgan bo'lsa, qayta request yubormaymiz
+        if st.session_state.results.get(idx):
+            done += 1
+            upd()
+            continue
+
         reserved = False
 
         with st.status(f"Sahifa {idx+1}...") as s:
@@ -864,54 +908,24 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
                 img_bytes = processed_pages[idx]
                 payload = {"mime_type": "image/jpeg", "data": base64.b64encode(img_bytes).decode("utf-8")}
 
-                # STEP A: READ (transliteratsiya)
-                read_text = call_gemini_with_retry(p_read, [payload], tries=3).strip()
+                # ✅ SINGLE REQUEST
+                prompt = build_single_prompt(hint_lang, hint_era, auto=auto_detect)
+                result_text = call_gemini_with_retry(prompt, [payload], tries=6).strip()
 
-                translit = _extract_translit(read_text)
+                if not result_text:
+                    raise RuntimeError("Bo‘sh natija qaytdi.")
 
-                # Agar translit juda qisqa bo'lsa: 1 retry
-                if len(translit) < 200:
-                    p_read2 = p_read + "\nMUHIM: Transliteratsiyani maksimal to‘liq yozing, qisqartirmang."
-                    read_text = call_gemini_with_retry(p_read2, [payload], tries=2).strip()
-                    translit = _extract_translit(read_text)
-
-                if not translit.strip():
-                    if reserved:
-                        refund_credit_safe(st.session_state.u_email, 1)
-                    msg = "Xato: transliteratsiya olinmadi."
-                    st.session_state.results[idx] = msg
-                    s.update(label="Bo‘sh natija (refund)", state="error")
-                    if st.session_state.auth:
-                        log_usage(st.session_state.u_email, st.session_state.last_fn, idx, "empty_read")
-                    done += 1; upd()
-                    continue
-
-                # STEP B: ANALYZE (2 + 6)
-                an_prompt = p_an + "\n\nTRANSLITERATSIYA:\n" + translit
-                an_text = call_gemini_with_retry(an_prompt, [], tries=3).strip()
-
-                if not has_min_sections(an_text):
-                    # 1 ehtiyot retry
-                    an_prompt2 = an_prompt + "\n\nMUHIM: Faqat 2) va 6) bo‘limlarni to‘liq chiqaring, boshqa bo‘lim qo‘shmang."
-                    an_text2 = call_gemini_with_retry(an_prompt2, [], tries=2).strip()
-                    if an_text2:
-                        an_text = an_text2
-
-                # Yakuniy natija: faqat tarjima + izoh
-                final_text = an_text.strip() if an_text.strip() else "Xato: tarjima/izoh chiqmadi."
-
-                st.session_state.results[idx] = final_text
+                st.session_state.results[idx] = result_text
                 s.update(label="Tayyor!", state="complete")
 
                 if st.session_state.auth:
-                    save_report(st.session_state.u_email, st.session_state.last_fn, idx, final_text)
+                    save_report(st.session_state.u_email, st.session_state.last_fn, idx, result_text)
                     log_usage(st.session_state.u_email, st.session_state.last_fn, idx, "ok")
 
             except Exception as e:
                 if reserved:
                     refund_credit_safe(st.session_state.u_email, 1)
 
-                # ✅ eng muhim: xato bo‘lsa ham natijaga yozib qo‘yamiz (UI’da ko‘rinadi)
                 err_txt = f"Xato: {type(e).__name__}: {e}"
                 st.session_state.results[idx] = err_txt
 
@@ -925,7 +939,6 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
 
     bar.progress(1.0)
     gc.collect()
-    # ✅ natija shu zahoti ko‘rinadi; majburiy rerun shart emas
     st.success("Tahlil yakunlandi.")
 
 
@@ -950,8 +963,9 @@ if st.session_state.results:
             </div>
             """
 
+            # ✅ unique button id per page (oldin hammasi copybtn edi)
             copy_js = f"""
-            <button id="copybtn" style="
+            <button id="copybtn_{idx}" style="
                 width:100%;
                 padding:10px 12px;
                 border-radius:12px;
@@ -960,14 +974,14 @@ if st.session_state.results:
                 cursor:pointer;
             ">📋 Natijani nusxalash</button>
             <script>
-              const txt = {html.escape(res)!r};
-              document.getElementById("copybtn").onclick = async () => {{
+              const txt_{idx} = {html.escape(res)!r};
+              document.getElementById("copybtn_{idx}").onclick = async () => {{
                 try {{
-                  await navigator.clipboard.writeText(txt);
-                  document.getElementById("copybtn").innerText = "✅ Nusxalandi";
-                  setTimeout(()=>document.getElementById("copybtn").innerText="📋 Natijani nusxalash", 1500);
+                  await navigator.clipboard.writeText(txt_{idx});
+                  document.getElementById("copybtn_{idx}").innerText = "✅ Nusxalandi";
+                  setTimeout(()=>document.getElementById("copybtn_{idx}").innerText="📋 Natijani nusxalash", 1500);
                 }} catch(e) {{
-                  document.getElementById("copybtn").innerText = "❌ Clipboard ruxsat yo‘q";
+                  document.getElementById("copybtn_{idx}").innerText = "❌ Clipboard ruxsat yo‘q";
                 }}
               }}
             </script>
@@ -999,16 +1013,14 @@ if st.session_state.results:
                         for ch in st.session_state.chats[idx]:
                             st.markdown(f"<div class='chat-user'><b>S:</b> {html.escape(ch['q'])}</div>", unsafe_allow_html=True)
                             st.markdown(f"<div class='chat-ai'><b>AI:</b> {html.escape(ch['a'])}</div>", unsafe_allow_html=True)
+
                         user_q = st.text_input("Savol bering:", key=f"q_{idx}")
                         if st.button(f"So'rash ({idx+1})", key=f"btn_{idx}"):
                             if user_q.strip():
                                 with st.spinner("..."):
                                     chat_prompt = f"Matn: {st.session_state.results[idx]}\nSavol: {user_q}\nJavobni o‘zbekcha, aniq va qisqa yoz."
-                                    chat_resp = model.generate_content(
-                                        [chat_prompt],
-                                        generation_config={"max_output_tokens": 1200, "temperature": 0.2}
-                                    )
-                                    st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
+                                    chat_text = call_gemini_with_retry(chat_prompt, [], tries=6)
+                                    st.session_state.chats[idx].append({"q": user_q, "a": chat_text})
                                     st.rerun()
             else:
                 c1, c2 = st.columns([1, 1.35], gap="large")
@@ -1040,11 +1052,8 @@ if st.session_state.results:
                                 if user_q.strip():
                                     with st.spinner("..."):
                                         chat_prompt = f"Matn: {st.session_state.results[idx]}\nSavol: {user_q}\nJavobni o‘zbekcha, aniq va qisqa yoz."
-                                        chat_resp = model.generate_content(
-                                            [chat_prompt],
-                                            generation_config={"max_output_tokens": 1200, "temperature": 0.2}
-                                        )
-                                        st.session_state.chats[idx].append({"q": user_q, "a": getattr(chat_resp, "text", "") or ""})
+                                        chat_text = call_gemini_with_retry(chat_prompt, [], tries=6)
+                                        st.session_state.chats[idx].append({"q": user_q, "a": chat_text})
                                         st.rerun()
 
     # Word export
