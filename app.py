@@ -445,277 +445,6 @@ def aggregate_detected_meta(results: dict[int, str]) -> dict:
     return {"til": til, "xat": xat, "conf": conf}
 
 
-# ============================
-# ANALYSIS QUALITY PATCH (ONLY ANALYSIS)
-# ============================
-# Eslatma: mavjud funksiyalarga tegilmaydi. Bu helperlar faqat RUN analysis ichida ishlatiladi.
-
-OCR_STRIPS_DEFAULT = 10
-OCR_STRIPS_RETRY = 13
-OCR_OVERLAP = 0.12
-OCR_STRIP_SLEEP = (0.25, 0.55)  # strip orasida yengil delay (429 kamayadi)
-
-def _split_two_pages_if_wide(img: Image.Image) -> list[Image.Image]:
-    """Agar rasm juda keng bo'lsa (2 bet skan), chap/o'ngga ajratadi."""
-    w, h = img.size
-    if w >= int(h * 1.15):
-        mid = w // 2
-        return [img.crop((0, 0, mid, h)), img.crop((mid, 0, w, h))]
-    return [img]
-
-def _split_vertical_strips(img: Image.Image, n: int, overlap: float) -> list[Image.Image]:
-    """Bitta betni yuqoridan pastga n ta bo'lak qilib beradi (overlap bilan)."""
-    w, h = img.size
-    step = h / float(max(n, 1))
-    ov = int(step * overlap)
-    strips: list[Image.Image] = []
-    for i in range(max(n, 1)):
-        y0 = max(0, int(i * step) - ov)
-        y1 = min(h, int((i + 1) * step) + ov)
-        strips.append(img.crop((0, y0, w, y1)))
-    return strips
-
-def _jpeg_payload_from_pil(img: Image.Image) -> dict:
-    jb = pil_to_jpeg_bytes(img, quality=90, max_side=3000)
-    return {"mime_type": "image/jpeg", "data": base64.b64encode(jb).decode("utf-8")}
-
-def has_read_sections(text: str) -> bool:
-    """READ bosqichi: 0) Tashxis va 1) Transliteratsiya bo'lishi shart."""
-    if not text:
-        return False
-    t = text.lower()
-    return ("0) tashxis" in t) and ("1) transliteratsiya" in t)
-
-def has_final_sections(text: str) -> bool:
-    """FINAL natijada 0-6 bo'limlar bo'lishi shart (sizning format)."""
-    if not text:
-        return False
-    must = [
-        "0) Tashxis",
-        "1) Transliteratsiya",
-        "2) To‘g‘ridan-to‘g‘ri tarjima",
-        "3) Akademik tarjima",
-        "4) Paleografiya",
-        "5) Arxaik",
-        "6) Izoh",
-    ]
-    t = text.lower()
-    return all(m.lower() in t for m in must)
-
-def extract_diag_block(read_text: str) -> str:
-    """0) Tashxis blokini ajratib beradi (0) dan 1) gacha). Topilmasa bo'sh."""
-    if not read_text:
-        return ""
-    m = re.search(r"(0\)\s*Tashxis[\s\S]+?)(?=\n\s*1\)\s*Transliteratsiya)", read_text, flags=re.IGNORECASE)
-    return (m.group(1).strip() if m else "").strip()
-
-def extract_translit_lines(read_text: str) -> str:
-    """
-    1) Transliteratsiya ichidagi SATRLARNI ajratadi (headinglarsiz).
-    Topilmasa bo'sh qaytaradi.
-    """
-    if not read_text:
-        return ""
-    m = re.search(r"1\)\s*Transliteratsiya[^\n]*\n([\s\S]+)", read_text, flags=re.IGNORECASE)
-    if not m:
-        return ""
-    return m.group(1).strip()
-
-def build_read_text(diag_block: str, translit_lines: str) -> str:
-    """Yagona READ natija: 0) tashxis + 1) transliteratsiya (toza)."""
-    diag = (diag_block or "").strip()
-    tl = (translit_lines or "").strip()
-    if not diag:
-        diag = (
-            "0) Tashxis:\n"
-            "Til: Noma'lum\n"
-            "Xat uslubi: Noma'lum\n"
-            "Hint mosligi: hint yo‘q\n"
-            "Ishonchlilik: o‘rtacha\n"
-            "Sabab: OCR/rasm sifati va model taxmini.\n"
-        )
-    return f"{diag}\n\n1) Transliteratsiya (satrma-satr, to‘liq):\n{tl}".strip()
-
-def translit_min_len_ok(translit_lines: str, min_chars: int = 600) -> bool:
-    """Transliteratsiya juda qisqa bo'lib qolmasin."""
-    return bool(translit_lines and len(translit_lines.strip()) >= int(min_chars))
-
-def read_transliteration_with_strips(p_read: str, img_bytes: bytes, strips_n: int) -> tuple[str, str]:
-    """
-    Strip OCR: faqat transliteratsiya satrlarini yig'adi.
-    Qaytaradi: (diag_block, translit_lines)
-    Xavfsizlik: xato bo'lsa bo'sh qaytaradi (fallback ishlaydi).
-    """
-    try:
-        # 1) Avval tashxisni bir marta olishga harakat (oddiy payload bilan)
-        payload_full = {"mime_type": "image/jpeg", "data": base64.b64encode(img_bytes).decode("utf-8")}
-        read0 = call_gemini_with_retry(p_read, [payload_full], tries=2).strip()
-        diag_block = extract_diag_block(read0)
-
-        # 2) Endi transliteratsiyani strip qilib maksimal to'liq yig'amiz (faqat satrlar)
-        pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        pages = _split_two_pages_if_wide(pil)
-
-        all_lines: list[str] = []
-        for p_i, p in enumerate(pages, start=1):
-            strips = _split_vertical_strips(p, n=int(strips_n), overlap=OCR_OVERLAP)
-            for s_i, strip in enumerate(strips, start=1):
-                payload = _jpeg_payload_from_pil(strip)
-                strip_prompt = (
-                    p_read
-                    + "\n\nMUHIM: Bu rasm BO‘LAK. Natijada faqat shu bo‘lakdagi matnning TRANSLITERATSIYA SATRLARINI yozing.\n"
-                      "- Hech qanday sarlavha (0)/1) yozmang.\n"
-                      "- Hech qanday izoh yozmang.\n"
-                      "- Har satr alohida qatorda.\n"
-                      "- O‘qilmasa: [o‘qilmadi] yoki [?].\n"
-                    + f"\n(Bo‘lak: bet {p_i}, {s_i}/{len(strips)})"
-                )
-                txt = call_gemini_with_retry(strip_prompt, [payload], tries=2).strip()
-                if txt:
-                    all_lines.append(txt)
-                time.sleep(random.uniform(*OCR_STRIP_SLEEP))
-
-        translit_lines = "\n".join([x for x in all_lines if x.strip()]).strip()
-        return diag_block, translit_lines
-    except Exception:
-        return "", ""
-
-def chunk_text_safe(text: str, chunk_chars: int = 2200, overlap: int = 120) -> list[str]:
-    t = (text or "").strip()
-    if len(t) <= chunk_chars:
-        return [t]
-    out: list[str] = []
-    i = 0
-    while i < len(t):
-        j = min(len(t), i + chunk_chars)
-        out.append(t[i:j])
-        if j >= len(t):
-            break
-        i = max(0, j - overlap)
-    return out
-
-def _extract_tag(resp: str, tag: str) -> str:
-    """<TAG>...</TAG> ichini oladi."""
-    if not resp:
-        return ""
-    m = re.search(rf"<{tag}>([\s\S]+?)</{tag}>", resp, flags=re.IGNORECASE)
-    return (m.group(1).strip() if m else "").strip()
-
-def translate_2_3_chunked(translit_lines: str) -> tuple[str, str]:
-    """
-    2) To'g'ridan-to'g'ri tarjima + 3) Akademik tarjima
-    Chunk bilan: truncation kamayadi.
-    Xavfsizlik: agar tag parse bo'lmasa, rawni ishlatadi.
-    """
-    chunks = chunk_text_safe(translit_lines, chunk_chars=1800, overlap=120)
-    direct_parts: list[str] = []
-    acad_parts: list[str] = []
-
-    for k, ch in enumerate(chunks, start=1):
-        prompt = (
-            "Siz qadimiy qo‘lyozmalar tarjimonisiz.\n"
-            "Vazifa: berilgan TRANSLITERATSIYA BO‘LAGI asosida 2 xil tarjima qiling.\n"
-            "QOIDALAR:\n"
-            "- Qisqartirmang.\n"
-            "- Har satrni imkon qadar satrma-satr tarjima qiling.\n"
-            "- O‘qilmagan joy: [o‘qilmadi] yoki [?] ni saqlang.\n"
-            "- Natija faqat o‘zbekcha.\n\n"
-            "FAqat quyidagi formatda chiqaring (hech narsa qo‘shmang):\n"
-            "<D>\n(2) To‘g‘ridan-to‘g‘ri tarjima satrlari\n</D>\n"
-            "<A>\n(3) Akademik tarjima satrlari\n</A>\n\n"
-            f"(Bo‘lak {k}/{len(chunks)})\n"
-            "TRANSLITERATSIYA:\n"
-            f"{ch}\n"
-        )
-        resp = call_gemini_with_retry(prompt, [], tries=3).strip()
-        d = _extract_tag(resp, "D") or resp
-        a = _extract_tag(resp, "A") or ""
-        direct_parts.append(d.strip())
-        if a.strip():
-            acad_parts.append(a.strip())
-        time.sleep(random.uniform(0.25, 0.6))
-
-    direct = "\n".join([x for x in direct_parts if x.strip()]).strip()
-    acad = "\n".join([x for x in acad_parts if x.strip()]).strip()
-
-    # Agar A bo'sh bo'lib qolsa (tag chiqmasa), directni hech bo'lmasa qaytaramiz
-    return direct, (acad or "")
-
-def analyze_4_5_6_once(p_an: str, translit_lines: str) -> tuple[str, str, str]:
-    """
-    4) Paleografiya + 5) Arxaik lug'at + 6) Izoh
-    Bir marta (overall). Juda uzun bo'lsa, excerpt ishlatadi (xavfsizlik).
-    """
-    excerpt = translit_lines.strip()
-    if len(excerpt) > 9000:
-        excerpt = excerpt[:9000] + "\n... [davomi qisqartirildi: tahlil uchun excerpt] ..."
-
-    prompt = (
-        p_an
-        + "\n\nMUHIM: Faqat 4), 5), 6) bo‘limlar mazmunini chiqaring. 2) va 3) ni yozmang.\n"
-          "Natija faqat quyidagi TAG formatda bo‘lsin (hech narsa qo‘shmang):\n"
-          "<P>\n4) Paleografiya matni\n</P>\n"
-          "<L>\n5) Arxaik lug'at (5–10 so‘z)\n</L>\n"
-          "<I>\n6) Izoh\n</I>\n\n"
-          "TRANSLITERATSIYA (asos):\n"
-        + excerpt
-    )
-
-    resp = call_gemini_with_retry(prompt, [], tries=3).strip()
-    p = _extract_tag(resp, "P") or ""
-    l = _extract_tag(resp, "L") or ""
-    i = _extract_tag(resp, "I") or ""
-    return p.strip(), l.strip(), i.strip()
-
-def build_analyze_text(p_an: str, translit_lines: str) -> str:
-    """
-    Yakuniy 2-6 bo'limlarni yig'adi.
-    Xavfsizlik: biror qismi bo'sh chiqsa, fallback bo'ladi.
-    """
-    direct, acad = translate_2_3_chunked(translit_lines)
-
-    # Agar akademik bo'sh qolsa, yana bir marta kichik retry
-    if not acad.strip():
-        prompt_retry = (
-            "Siz Manuscript AI tarjimonisiz.\n"
-            "Vazifa: quyidagi transliteratsiya asosida AKADEMIK tarjima yozing.\n"
-            "Qoidalar: qisqartirmang, o‘zbekcha, izchil.\n\n"
-            "FAqat shu formatda:\n"
-            "3) Akademik tarjima (mazmuniy, izchil):\n"
-            "<matn>\n\n"
-            "TRANSLITERATSIYA:\n"
-            + (translit_lines[:4500] if len(translit_lines) > 4500 else translit_lines)
-        )
-        acad = call_gemini_with_retry(prompt_retry, [], tries=2).strip()
-
-    paleo, lex, note = analyze_4_5_6_once(p_an, translit_lines)
-
-    # Bo'shlar bo'lsa — minimal fallback matn (app ishdan chiqmasin)
-    if not direct.strip():
-        direct = "[Tarjima chiqmadi]"
-    if not paleo.strip():
-        paleo = "[Paleografiya bo‘limi chiqmadi]"
-    if not lex.strip():
-        lex = "[Arxaik lug‘at chiqmadi]"
-    if not note.strip():
-        note = "[Izoh chiqmadi]"
-
-    # 2-6 formatni qat'iy saqlaymiz
-    out = (
-        "2) To‘g‘ridan-to‘g‘ri tarjima (oddiy o‘zbekcha):\n"
-        f"{direct.strip()}\n\n"
-        "3) Akademik tarjima (mazmuniy, izchil):\n"
-        f"{acad.strip()}\n\n"
-        "4) Paleografiya:\n"
-        f"{paleo.strip()}\n\n"
-        "5) Arxaik lug'at (5–10 so‘z):\n"
-        f"{lex.strip()}\n\n"
-        "6) Izoh (kontekst; aniq bo‘lmasa ehtiyot bo‘l):\n"
-        f"{note.strip()}\n"
-    )
-    return out.strip()
-
-
 # --- AI completeness validator (muammoingiz shu yerda yechiladi) ---
 def has_required_sections(text: str) -> bool:
     if not text: return False
@@ -1228,30 +957,15 @@ if uploaded_file:
                     payload = {"mime_type": "image/jpeg", "data": base64.b64encode(img_bytes).decode("utf-8")}
 
                     # --- STEP A: READ (transliteratsiya) ---
-                    # 1) Avval oddiy READ (tez)
-                    read_text = call_gemini_with_retry(p_read, [payload], tries=3).strip()
+                    read_text = call_gemini_with_retry(p_read, [payload], tries=3)
 
-                    # 2) Agar READ formati yo'q yoki translit juda qisqa bo'lsa -> strip OCR bilan kuchaytiramiz
-                    translit_lines = extract_translit_lines(read_text)
-                    diag_block = extract_diag_block(read_text)
+                    # validator: agar transliteratsiya juda qisqa bo'lsa — 1 marta qayta urinamiz
+                    if (not has_required_sections(read_text)) or (not transliteration_length_ok(read_text)):
+                        # kuchaytirilgan read prompt (1 retry)
+                        p_read2 = p_read + "\n\nMUHIM: Matn ko‘p bo‘lishi mumkin. Transliteratsiyani maksimal to‘liq yozing, qisqartirmang."
+                        read_text = call_gemini_with_retry(p_read2, [payload], tries=2)
 
-                    if (not has_read_sections(read_text)) or (not translit_min_len_ok(translit_lines, min_chars=600)):
-                        d2, tl2 = read_transliteration_with_strips(p_read, img_bytes, strips_n=OCR_STRIPS_DEFAULT)
-                        if tl2.strip():
-                            diag_block = d2 or diag_block
-                            translit_lines = tl2
-
-                    # 3) Hali ham qisqa bo'lsa -> strip sonini oshirib oxirgi urinish (1 marta)
-                    if not translit_min_len_ok(translit_lines, min_chars=600):
-                        d3, tl3 = read_transliteration_with_strips(p_read, img_bytes, strips_n=OCR_STRIPS_RETRY)
-                        if tl3.strip():
-                            diag_block = d3 or diag_block
-                            translit_lines = tl3
-
-                    # 4) READ ni tozalab bitta formatga keltiramiz
-                    read_text = build_read_text(diag_block, translit_lines)
-
-                    if not read_text.strip() or not translit_lines.strip():
+                    if not read_text.strip():
                         if reserved:
                             refund_credit_safe(st.session_state.u_email, 1)
                         s.update(label="Bo‘sh natija (refund)", state="error")
@@ -1259,26 +973,24 @@ if uploaded_file:
                             log_usage(st.session_state.u_email, st.session_state.last_fn, idx, "empty_read")
                         continue
 
-                    # --- STEP B: ANALYZE (2-6 bo'limlar, truncation-safe) ---
-                    # Asosiy tahlilni yig'amiz: (2-6)
-                    try:
-                        an_text = build_analyze_text(p_an, translit_lines)
-                    except Exception:
-                        # Xavfsiz fallback: eski usul (bir martalik analyze)
-                        an_prompt = p_an + "\n\nQuyidagi transliteratsiya bilan ishlang (faqat shunga tayangan holda):\n" + translit_lines
-                        an_text = call_gemini_with_retry(an_prompt, [], tries=3).strip()
+                    # --- STEP B: ANALYZE ---
+                    # read_text ichidan faqat transliteratsiya blokini ham olib beramiz (model chalg'imasin)
+                    m = re.search(r"1\)\s*Transliteratsiya(.+)", read_text, flags=re.IGNORECASE | re.DOTALL)
+                    translit_only = (m.group(0).strip() if m else read_text.strip())
+                    an_prompt = p_an + "\n\nQuyidagi transliteratsiya bilan ishlang (faqat shunga tayangan holda):\n" + translit_only
 
+                    an_text = call_gemini_with_retry(an_prompt, [], tries=3)
+
+                    # yakuniy text: tashxis + translit + tarjima/tahlil
                     final_text = read_text.strip() + "\n\n" + (an_text.strip() or "")
 
-                    # FINAL validator: bo'limlar yetishmasa 1 marta kuchaytirilgan retry
-                    if not has_final_sections(final_text):
-                        try:
-                            p_an2 = p_an + "\n\nMUHIM: Formatni qat'iy saqla. 2-6 bo'limlarning hammasini to'liq yoz."
-                            an_text2 = build_analyze_text(p_an2, translit_lines)
-                            if an_text2.strip():
-                                final_text = read_text.strip() + "\n\n" + an_text2.strip()
-                        except Exception:
-                            pass
+                    # final validator
+                    if (not has_required_sections(final_text)) or (not transliteration_length_ok(final_text)):
+                        # yakuniy ehtiyot retry (1 marta)
+                        an_prompt2 = an_prompt + "\n\nMUHIM: Tarjima va tahlilni ham to‘liq yozing. Hech narsa tushirib qoldirmang."
+                        an_text2 = call_gemini_with_retry(an_prompt2, [], tries=2)
+                        if an_text2.strip():
+                            final_text = read_text.strip() + "\n\n" + an_text2.strip()
 
                     st.session_state.results[idx] = final_text
                     s.update(label="Tayyor!", state="complete")
