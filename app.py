@@ -12,7 +12,6 @@ from collections import Counter, deque
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-
 from supabase import create_client
 
 
@@ -27,36 +26,35 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2) CONSTANTS
+# 2) CONSTANTS (LOCKED MODEL)
 # ==========================================
+MODEL_NAME = "gemini-flash-latest"   # ✅ FAQAT SHU MODEL (fallback YO‘Q)
+
 THEME = "DARK_GOLD"
 DEMO_LIMIT_PAGES = 3
 STARTER_CREDITS = 10
 HISTORY_LIMIT = 20
 
-# Rate-limit safety
-SAFE_RPM = 7            # 15 RPM bo'lsa ham, cloud/retry uchun xavfsizroq
+# 429 ni maksimal kamaytirish (15 RPM limit bo'lsa ham, cloud/retry uchun xavfsizroq)
+SAFE_RPM = 8
 RATE_WINDOW_SEC = 60
 MAX_RETRIES = 7
 
-# Image quality balance (aniqlik + 429 xavfi)
+# Rasm sifati: aniqlik + tezlik + 429 balans
 JPEG_QUALITY_FULL = 82
 JPEG_QUALITY_TILE = 84
 FULL_MAX_SIDE = 2000
 TILE_MAX_SIDE = 2400
 
-# PDF render (matn uchun)
-PDF_SCALE_DEFAULT = 2.0
+# PDF render
+PDF_SCALE_DEFAULT = 2.1
 
-# Max output (uzun translit bo'ladi)
-MAX_OUT_TOKENS = 4096
+# token
+MAX_OUT_TOKENS_READ = 4096   # transliteratsiya uzun bo'ladi
+MAX_OUT_TOKENS_AN = 2400     # tarjima+izoh
 
-# Model candidates (404 bo'lsa fallback)
-MODEL_CANDIDATES = [
-    "gemini-flash-latest",        # siz xohlagan
-    "gemini-1.5-flash-latest",    # fallback
-    "gemini-1.5-flash",           # fallback
-]
+BATCH_DELAY_RANGE = (0.6, 1.2)  # sahifa orasida kichik pauza
+
 
 # ==========================================
 # 3) THEME
@@ -206,19 +204,14 @@ h1, h2, h3, h4 {{
 # 5) SERVICES (DB + GEMINI)
 # ==========================================
 @st.cache_resource
-def get_db_or_none():
+def get_db():
     try:
-        url = st.secrets.get("SUPABASE_URL", "")
-        key = st.secrets.get("SUPABASE_KEY", "")
-        if not url or not key:
-            return None
-        return create_client(url, key)
+        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception:
         return None
 
-db = get_db_or_none()
+db = get_db()
 
-# Gemini
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 if not api_key:
     st.error("GEMINI_API_KEY topilmadi (Streamlit secrets).")
@@ -227,12 +220,14 @@ if not api_key:
 genai.configure(api_key=api_key)
 
 @st.cache_resource
-def get_model_cached(name: str):
-    return genai.GenerativeModel(model_name=name)
+def get_model():
+    return genai.GenerativeModel(model_name=MODEL_NAME)
+
+model = get_model()
 
 
 # ==========================================
-# 6) RATE LIMITER (process-wide)
+# 6) RATE LIMITER (to avoid 429)
 # ==========================================
 class RateLimiter:
     def __init__(self, rpm: int, window_sec: int = 60):
@@ -250,8 +245,8 @@ class RateLimiter:
                 if len(self.ts) < self.rpm:
                     self.ts.append(now)
                     return
-                sleep_for = (self.window - (now - self.ts[0])) + 0.15
-            time.sleep(max(0.30, sleep_for))
+                sleep_for = (self.window - (now - self.ts[0])) + 0.2
+            time.sleep(max(0.35, sleep_for))
 
 @st.cache_resource
 def get_limiter():
@@ -259,45 +254,46 @@ def get_limiter():
 
 limiter = get_limiter()
 
-
-def _looks_like_404(msg: str) -> bool:
-    m = (msg or "").lower()
-    return ("404" in m) or ("not found" in m)
-
 def _looks_like_429(msg: str) -> bool:
     m = (msg or "").lower()
     return ("429" in m) or ("quota" in m) or ("rate" in m) or ("exhaust" in m)
 
-def safe_generate(parts: list, max_tokens: int) -> str:
+def _looks_like_5xx(msg: str) -> bool:
+    m = (msg or "").lower()
+    return ("500" in m) or ("503" in m) or ("timeout" in m) or ("temporarily" in m)
+
+def generate_with_retry(parts, max_tokens: int, tries: int = MAX_RETRIES) -> str:
     """
-    - 404 bo'lsa: model fallback
-    - 429/500/503/timeout bo'lsa: backoff + retry
+    ✅ FAQAT gemini-flash-latest
+    ✅ 429/5xx => retry + backoff
+    ✅ 404 => darhol aniq xabar
     """
     last_err = None
-    for model_name in MODEL_CANDIDATES:
-        model = get_model_cached(model_name)
-        for attempt in range(MAX_RETRIES):
-            try:
-                limiter.wait_for_slot()
-                resp = model.generate_content(
-                    parts,
-                    generation_config={"max_output_tokens": max_tokens, "temperature": 0.15}
-                )
-                return getattr(resp, "text", "") or ""
-            except Exception as e:
-                last_err = e
-                msg = str(e)
+    for attempt in range(tries):
+        try:
+            limiter.wait_for_slot()
+            resp = model.generate_content(
+                parts,
+                generation_config={"max_output_tokens": int(max_tokens), "temperature": 0.15}
+            )
+            return getattr(resp, "text", "") or ""
+        except Exception as e:
+            last_err = e
+            msg = str(e)
+            low = msg.lower()
 
-                if _looks_like_404(msg):
-                    break  # keyingi modelga o'tamiz
+            if "404" in low and ("not found" in low or "models/" in low):
+                raise RuntimeError(
+                    f"AI xatosi: 404. Model '{MODEL_NAME}' topilmadi yoki API versiyada yo‘q.\n"
+                    f"DIQQAT: model nomi aniq '{MODEL_NAME}' bo‘lishi kerak (siz shuni tanlagansiz)."
+                ) from e
 
-                if _looks_like_429(msg) or ("500" in msg) or ("503" in msg) or ("timeout" in msg.lower()):
-                    time.sleep(min(60, (2 ** attempt)) + random.uniform(0.8, 2.0))
-                    continue
+            if _looks_like_429(msg) or _looks_like_5xx(msg):
+                time.sleep(min(60, (2 ** attempt)) + random.uniform(0.8, 2.0))
+                continue
 
-                raise  # boshqa xato
-
-    raise RuntimeError(f"AI xatosi: {last_err}")
+            raise
+    raise RuntimeError(f"So'rovlar ko'p yoki tarmoq muammo: {last_err}") from last_err
 
 
 # ==========================================
@@ -305,7 +301,7 @@ def safe_generate(parts: list, max_tokens: int) -> str:
 # ==========================================
 if "auth" not in st.session_state: st.session_state.auth = False
 if "u_email" not in st.session_state: st.session_state.u_email = ""
-if "last_fn" not in st.session_state: st.session_state.last_fn = None
+if "last_key" not in st.session_state: st.session_state.last_key = None
 
 if "page_bytes" not in st.session_state: st.session_state.page_bytes = []
 if "results" not in st.session_state: st.session_state.results = {}
@@ -314,9 +310,9 @@ if "warn_db" not in st.session_state: st.session_state.warn_db = False
 
 
 # ==========================================
-# 8) IMAGE HELPERS
+# 8) HELPERS (images/pdf)
 # ==========================================
-def pil_to_jpeg_bytes(img: Image.Image, quality: int, max_side: int) -> bytes:
+def pil_to_jpeg_bytes(img: Image.Image, quality: int = 90, max_side: int = 2800) -> bytes:
     img = img.convert("RGB")
     w, h = img.size
     long_side = max(w, h)
@@ -324,37 +320,37 @@ def pil_to_jpeg_bytes(img: Image.Image, quality: int, max_side: int) -> bytes:
         ratio = max_side / float(long_side)
         img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=quality, optimize=True)
+    img.save(buf, format="JPEG", quality=int(quality), optimize=True)
     return buf.getvalue()
 
-@st.cache_data(show_spinner=False, max_entries=12)
+@st.cache_data(show_spinner=False, max_entries=16)
 def render_pdf_pages_to_bytes(file_bytes: bytes, max_pages: int, scale: float):
     pdf = pdfium.PdfDocument(file_bytes)
     out = []
     try:
-        n = min(len(pdf), max_pages)
+        n = min(len(pdf), int(max_pages))
         for i in range(n):
-            pil_img = pdf[i].render(scale=scale).to_pil()
-            out.append(pil_to_jpeg_bytes(pil_img, JPEG_QUALITY_FULL, FULL_MAX_SIDE))
+            pil_img = pdf[i].render(scale=float(scale)).to_pil()
+            out.append(pil_to_jpeg_bytes(pil_img, quality=JPEG_QUALITY_FULL, max_side=FULL_MAX_SIDE))
     finally:
         try: pdf.close()
         except Exception: pass
     return out
 
-@st.cache_data(show_spinner=False, max_entries=256)
+@st.cache_data(show_spinner=False, max_entries=512)
 def preprocess_bytes(img_bytes: bytes, brightness: float, contrast: float, rotate: int, sharpen: float) -> bytes:
     img = Image.open(io.BytesIO(img_bytes))
     img = ImageOps.exif_transpose(img)
     if rotate:
-        img = img.rotate(rotate, expand=True)
+        img = img.rotate(int(rotate), expand=True)
 
-    img = ImageEnhance.Brightness(img).enhance(brightness)
-    img = ImageEnhance.Contrast(img).enhance(contrast)
+    img = ImageEnhance.Brightness(img).enhance(float(brightness))
+    img = ImageEnhance.Contrast(img).enhance(float(contrast))
 
     if sharpen > 0:
-        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=int(120 * sharpen), threshold=2))
+        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=int(120 * float(sharpen)), threshold=2))
 
-    return pil_to_jpeg_bytes(img, JPEG_QUALITY_FULL, FULL_MAX_SIDE)
+    return pil_to_jpeg_bytes(img, quality=JPEG_QUALITY_FULL, max_side=FULL_MAX_SIDE)
 
 def parse_pages(spec: str, max_n: int):
     spec = (spec or "").strip()
@@ -379,35 +375,35 @@ def parse_pages(spec: str, max_n: int):
             continue
     return sorted(out) if out else ([0] if max_n > 0 else [])
 
+def _payload(img_bytes: bytes) -> dict:
+    return {"mime_type": "image/jpeg", "data": base64.b64encode(img_bytes).decode("utf-8")}
+
 def build_payloads_from_page(img_bytes: bytes, hi_res: bool = False):
     """
     1 request ichida: full + zoom/tiles.
-    - spread bo'lsa: full + left + right
-    - oddiy sahifa bo'lsa: full + 2x2 tiles (overlap bilan)
+    Spread bo'lsa: full + left + right
+    Oddiy sahifa: full + 2x2 tile (overlap bilan)
     """
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     w, h = img.size
     aspect = w / max(h, 1)
 
     full_side = 2200 if hi_res else FULL_MAX_SIDE
-    tile_side = 2600 if hi_res else TILE_MAX_SIDE
+    tile_side = 2800 if hi_res else TILE_MAX_SIDE
     q_full = 84 if hi_res else JPEG_QUALITY_FULL
     q_tile = 86 if hi_res else JPEG_QUALITY_TILE
 
-    def to_payload(b: bytes):
-        return {"mime_type": "image/jpeg", "data": base64.b64encode(b).decode("utf-8")}
+    payloads = [_payload(pil_to_jpeg_bytes(img, quality=q_full, max_side=full_side))]
 
-    payloads = [to_payload(pil_to_jpeg_bytes(img, q_full, full_side))]
-
+    # ikki sahifalik spread bo'lsa
     if aspect >= 1.25:
-        # ikki bet spread
         left = img.crop((0, 0, w // 2, h))
         right = img.crop((w // 2, 0, w, h))
-        payloads.append(to_payload(pil_to_jpeg_bytes(left, q_tile, tile_side)))
-        payloads.append(to_payload(pil_to_jpeg_bytes(right, q_tile, tile_side)))
+        payloads.append(_payload(pil_to_jpeg_bytes(left, quality=q_tile, max_side=tile_side)))
+        payloads.append(_payload(pil_to_jpeg_bytes(right, quality=q_tile, max_side=tile_side)))
         return payloads
 
-    # 2x2 tile + overlap
+    # 2x2 tiles overlap bilan
     ox = int(w * 0.06)
     oy = int(h * 0.06)
     xs = [0, w // 2]
@@ -419,56 +415,184 @@ def build_payloads_from_page(img_bytes: bytes, hi_res: bool = False):
             x2 = min(w, xx + w // 2 + ox)
             y2 = min(h, yy + h // 2 + oy)
             tile = img.crop((x1, y1, x2, y2))
-            payloads.append(to_payload(pil_to_jpeg_bytes(tile, q_tile, tile_side)))
+            payloads.append(_payload(pil_to_jpeg_bytes(tile, quality=q_tile, max_side=tile_side)))
 
     return payloads
 
 
 # ==========================================
-# 9) PROMPT + VALIDATION
+# 9) DB HELPERS
 # ==========================================
-def build_prompt(hint_lang: str, hint_era: str) -> str:
+def ensure_profile(email: str) -> None:
+    if db is None:
+        return
+    try:
+        existing = db.table("profiles").select("email,credits").eq("email", email).limit(1).execute()
+        if existing.data:
+            return
+        db.table("profiles").insert({"email": email, "credits": STARTER_CREDITS}).execute()
+    except Exception:
+        st.session_state.warn_db = True
+
+def get_credits(email: str) -> int:
+    if db is None:
+        return 0
+    try:
+        r = db.table("profiles").select("credits").eq("email", email).single().execute()
+        return int(r.data["credits"]) if r.data and "credits" in r.data else 0
+    except Exception:
+        st.session_state.warn_db = True
+        return 0
+
+def consume_credit_safe(email: str, n: int = 1) -> bool:
+    if db is None:
+        return True
+    try:
+        r = db.rpc("consume_credits", {"p_email": email, "p_n": n}).execute()
+        return bool(r.data)
+    except Exception:
+        pass
+
+    for _ in range(2):
+        try:
+            cur = get_credits(email)
+            if cur < n:
+                return False
+            newv = cur - n
+            upd = db.table("profiles").update({"credits": newv}).eq("email", email).eq("credits", cur).execute()
+            if upd.data:
+                return True
+        except Exception:
+            st.session_state.warn_db = True
+            return False
+    return False
+
+def refund_credit_safe(email: str, n: int = 1) -> None:
+    if db is None:
+        return
+    try:
+        db.rpc("refund_credits", {"p_email": email, "p_n": n}).execute()
+        return
+    except Exception:
+        pass
+
+    for _ in range(2):
+        try:
+            cur = get_credits(email)
+            upd = db.table("profiles").update({"credits": cur + n}).eq("email", email).eq("credits", cur).execute()
+            if upd.data:
+                return
+        except Exception:
+            st.session_state.warn_db = True
+            return
+
+def log_usage(email: str, doc_name: str, page_index: int, status: str, note: str = "") -> None:
+    if db is None:
+        return
+    try:
+        db.table("usage_logs").insert({
+            "email": email,
+            "doc_name": doc_name,
+            "page_index": int(page_index),
+            "status": status,
+            "note": (note or "")[:240],
+            "created_at": datetime.utcnow().isoformat()
+        }).execute()
+    except Exception:
+        st.session_state.warn_db = True
+
+def save_report(email: str, doc_name: str, page_index: int, result_text: str) -> None:
+    if db is None:
+        return
+    try:
+        db.table("reports").upsert(
+            {
+                "email": email,
+                "doc_name": doc_name,
+                "page_index": int(page_index),
+                "result_text": result_text,
+                "updated_at": datetime.utcnow().isoformat()
+            },
+            on_conflict="email,doc_name,page_index"
+        ).execute()
+    except Exception:
+        st.session_state.warn_db = True
+
+def load_reports(email: str, doc_name: str) -> dict:
+    if db is None:
+        return {}
+    try:
+        r = db.table("reports").select("page_index,result_text") \
+            .eq("email", email).eq("doc_name", doc_name).limit(300).execute()
+        out = {}
+        for row in (r.data or []):
+            out[int(row["page_index"])] = row.get("result_text") or ""
+        return out
+    except Exception:
+        st.session_state.warn_db = True
+        return {}
+
+
+# ==========================================
+# 10) PROMPTS (2-step = FULL RESULT)
+# ==========================================
+def build_prompts(hint_lang: str, hint_era: str):
     hl = hint_lang or "yo‘q"
     he = hint_era or "yo‘q"
-    return (
-        "Siz qo‘lyozma o‘qish va tarjima bo‘yicha mutaxassissiz.\n"
-        "Sizga bir sahifa uchun bir nechta rasm beriladi: 1-rasm full, qolganlari zoom/tiles.\n"
-        "ASOSIY: zoom/tiles rasmlardagi matnga tayanib maksimal to‘liq o‘qing.\n\n"
+
+    p_read = (
+        "Siz qo‘lyozma o‘qish bo‘yicha mutaxassissiz.\n"
+        "Sizga 1 sahifa uchun bir nechta rasm beriladi: 1-rasm full, qolganlari zoom/tiles.\n"
+        "Vazifa: matnni maksimal to‘liq o‘qing va transliteratsiya qiling.\n\n"
         "QOIDALAR:\n"
         "- Hech narsa uydirmang.\n"
         "- O‘qilmagan joy: [o‘qilmadi] yoki [?].\n"
-        "- Bo‘limlarni bo‘sh qoldirmang.\n"
-        "- Matnda bor so‘zlarni tashlab ketmang.\n"
-        "- Transliteratsiya satrma-satr bo‘lsin.\n\n"
+        "- Har satr alohida qatorda.\n"
+        "- Hech bir so‘zni tashlab ketmang (zoom/tilesga tayaning).\n\n"
         f"HINT: til='{hl}', xat uslubi='{he}'.\n\n"
-        "FORMAT (aniq shu tartibda):\n"
+        "FORMAT (aniq shunday):\n"
         "0) Tashxis:\n"
-        "Til: <aniqlangan til yoki Noma'lum>\n"
-        "Xat uslubi: <aniqlangan xat yoki Noma'lum>\n"
+        "Til: <aniqlangan yoki Noma'lum>\n"
+        "Xat uslubi: <aniqlangan yoki Noma'lum>\n"
         "Ishonchlilik: <Yuqori/O‘rtacha/Past>\n\n"
         "1) Transliteratsiya:\n"
-        "<satrma-satr, maksimal to‘liq>\n\n"
+        "<satrma-satr, maksimal to‘liq>\n"
+    )
+
+    p_an = (
+        "Siz Manuscript AI tarjimonisiz.\n"
+        "Vazifa: berilgan transliteratsiya asosida faqat 2) va 6) bo‘limini yozing.\n"
+        "QOIDALAR:\n"
+        "- Hech narsa uydirmang.\n"
+        "- Ism/son/sana/joylarni aynan transliteratsiyadagidek saqlang.\n\n"
+        "FORMAT:\n"
         "2) To‘g‘ridan-to‘g‘ri tarjima:\n"
         "<oddiy o‘zbekcha, to‘liq>\n\n"
         "6) Izoh:\n"
-        "<kontekst va noaniqliklar; ehtiyotkor izoh>\n"
+        "<kontekst; noaniq joylarni ehtiyotkor izohlang>\n"
     )
+    return p_read, p_an
 
-def has_required_sections(text: str) -> bool:
+def extract_translit(read_text: str) -> str:
+    if not read_text:
+        return ""
+    m = re.search(r"1\)\s*Transliteratsiya\s*:?\s*\n?([\s\S]+)$", read_text, flags=re.IGNORECASE)
+    return (m.group(1).strip() if m else read_text.strip())
+
+def has_read_sections(text: str) -> bool:
     t = (text or "").lower()
-    return ("0) tashxis" in t) and ("1) transliteratsiya" in t) and ("2) to" in t) and ("6) izoh" in t)
+    return ("0) tashxis" in t) and ("1) transliteratsiya" in t)
 
-def translit_length(text: str) -> int:
-    if not text:
-        return 0
-    m = re.search(r"1\)\s*Transliteratsiya\s*:?\s*\n([\s\S]*?)(\n\s*2\)|\n\s*6\)|$)", text, flags=re.IGNORECASE)
-    if not m:
-        return 0
-    return len((m.group(1) or "").strip())
+def has_an_sections(text: str) -> bool:
+    t = (text or "").lower()
+    return ("2) to" in t) and ("6) izoh" in t)
+
+def translit_ok(translit: str) -> bool:
+    return bool(translit and len(translit.strip()) >= 220)
 
 
 # ==========================================
-# 10) RESULT CARD (pretty render)
+# 11) RESULT CARD RENDER
 # ==========================================
 def extract_diagnosis(text: str) -> dict:
     t = text or ""
@@ -582,7 +706,7 @@ def render_result_card(md: str, gold: str) -> str:
 
 
 # ==========================================
-# 11) WORD EXPORT
+# 12) WORD EXPORT
 # ==========================================
 def _doc_set_normal_style(doc: Document):
     style = doc.styles["Normal"]
@@ -638,122 +762,13 @@ def aggregate_detected_meta(results: dict) -> dict:
 
 
 # ==========================================
-# 12) DB HELPERS (optional)
-# ==========================================
-def ensure_profile(email: str) -> None:
-    if db is None:
-        return
-    try:
-        existing = db.table("profiles").select("email,credits").eq("email", email).limit(1).execute()
-        if existing.data:
-            return
-        db.table("profiles").insert({"email": email, "credits": STARTER_CREDITS}).execute()
-    except Exception:
-        st.session_state.warn_db = True
-
-def get_credits(email: str) -> int:
-    if db is None:
-        return 0
-    try:
-        r = db.table("profiles").select("credits").eq("email", email).single().execute()
-        return int(r.data["credits"]) if r.data and "credits" in r.data else 0
-    except Exception:
-        st.session_state.warn_db = True
-        return 0
-
-def consume_credit_safe(email: str, n: int = 1) -> bool:
-    if db is None:
-        return True  # DB yo'q bo'lsa kredit bloklamaymiz (demo uchun)
-    try:
-        r = db.rpc("consume_credits", {"p_email": email, "p_n": n}).execute()
-        return bool(r.data)
-    except Exception:
-        pass
-
-    # fallback
-    for _ in range(2):
-        try:
-            cur = get_credits(email)
-            if cur < n:
-                return False
-            newv = cur - n
-            upd = db.table("profiles").update({"credits": newv}).eq("email", email).eq("credits", cur).execute()
-            if upd.data:
-                return True
-        except Exception:
-            st.session_state.warn_db = True
-            return False
-    return False
-
-def refund_credit_safe(email: str, n: int = 1) -> None:
-    if db is None:
-        return
-    try:
-        db.rpc("refund_credits", {"p_email": email, "p_n": n}).execute()
-        return
-    except Exception:
-        pass
-    try:
-        cur = get_credits(email)
-        db.table("profiles").update({"credits": cur + n}).eq("email", email).eq("credits", cur).execute()
-    except Exception:
-        st.session_state.warn_db = True
-
-def log_usage(email: str, doc_name: str, page_index: int, status: str, note: str = "") -> None:
-    if db is None:
-        return
-    try:
-        db.table("usage_logs").insert({
-            "email": email,
-            "doc_name": doc_name,
-            "page_index": page_index,
-            "status": status,
-            "note": (note or "")[:240],
-            "created_at": datetime.utcnow().isoformat()
-        }).execute()
-    except Exception:
-        st.session_state.warn_db = True
-
-def save_report(email: str, doc_name: str, page_index: int, result_text: str) -> None:
-    if db is None:
-        return
-    try:
-        db.table("reports").upsert(
-            {
-                "email": email,
-                "doc_name": doc_name,
-                "page_index": page_index,
-                "result_text": result_text,
-                "updated_at": datetime.utcnow().isoformat()
-            },
-            on_conflict="email,doc_name,page_index"
-        ).execute()
-    except Exception:
-        st.session_state.warn_db = True
-
-def load_reports(email: str, doc_name: str) -> dict:
-    if db is None:
-        return {}
-    try:
-        r = db.table("reports").select("page_index,result_text") \
-            .eq("email", email).eq("doc_name", doc_name).limit(200).execute()
-        out = {}
-        for row in (r.data or []):
-            out[int(row["page_index"])] = row.get("result_text") or ""
-        return out
-    except Exception:
-        st.session_state.warn_db = True
-        return {}
-
-
-# ==========================================
 # 13) SIDEBAR
 # ==========================================
 with st.sidebar:
     st.markdown("<h2 style='text-align:center;'>📜 MS AI PRO</h2>", unsafe_allow_html=True)
 
     st.markdown("### ✉️ Email bilan kirish")
-    st.caption("Email kiriting — kreditlar, history, Word eksport ochiladi.")
+    st.caption("Email kiriting — kreditlar va Word eksport ochiladi.")
 
     email_in = st.text_input("Email", value=(st.session_state.u_email or ""), placeholder="example@mail.com")
     if st.button("KIRISH"):
@@ -784,32 +799,12 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
         if st.session_state.warn_db:
-            st.warning("DB/RPC vaqtinchalik muammo bo‘lishi mumkin.")
+            st.warning("DB yoki RPC’da vaqtinchalik muammo bo‘lishi mumkin.")
 
         if st.button("🚪 CHIQISH"):
             st.session_state.auth = False
             st.session_state.u_email = ""
             st.rerun()
-
-        with st.expander(f"🧾 History (oxirgi {HISTORY_LIMIT})", expanded=False):
-            if db is None:
-                st.caption("History: DB ulanmagan.")
-            else:
-                try:
-                    r = db.table("usage_logs") \
-                        .select("created_at,doc_name,page_index,status") \
-                        .eq("email", st.session_state.u_email) \
-                        .order("created_at", desc=True) \
-                        .limit(HISTORY_LIMIT).execute()
-                    data = r.data or []
-                    if not data:
-                        st.caption("History hozircha bo‘sh.")
-                    else:
-                        for row in data:
-                            ts = (row.get("created_at") or "")[:19].replace("T", " ")
-                            st.caption(f"{ts} • {row.get('doc_name','')} • sahifa {int(row.get('page_index',0))+1} • {row.get('status','')}")
-                except Exception:
-                    st.caption("History o‘qilmadi (RLS/DB muammo).")
 
     st.divider()
 
@@ -824,13 +819,11 @@ with st.sidebar:
     contrast = st.slider("Kontrast:", 0.5, 3.0, 1.45)
     sharpen = st.slider("Sharpen:", 0.0, 1.5, 1.0, 0.1)
 
-    scale = st.slider("PDF render scale:", 1.4, 2.6, PDF_SCALE_DEFAULT, 0.1)
+    scale = st.slider("PDF render scale:", 1.4, 2.8, PDF_SCALE_DEFAULT, 0.1)
     max_pages = st.slider("Preview max sahifa:", 1, 120, 40)
 
     st.markdown("### 🧭 Ko'rinish")
     view_mode = st.radio("Natija ko'rinishi:", ["Yonma-yon", "Tabs"], index=0, horizontal=True)
-
-    force_rerun = st.checkbox("🔁 Oldingi natijani ham qayta hisobla", value=False)
 
 
 # ==========================================
@@ -840,31 +833,32 @@ st.title("📜 Manuscript AI Center")
 st.markdown("<p style='text-align:center;'>Qadimiy hujjatlarni yuklang va AI yordamida o‘qing, tarjima qiling.</p>", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Faylni yuklang", type=["pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
-
 if uploaded_file is None:
     st.stop()
 
 # ==========================================
-# FILE LOADED
+# LOAD FILE (re-render when settings change)
 # ==========================================
-if st.session_state.last_fn != uploaded_file.name:
+file_key = (uploaded_file.name, str(uploaded_file.type), int(max_pages), float(scale))
+if st.session_state.last_key != file_key:
     with st.spinner("Preparing..."):
         file_bytes = uploaded_file.getvalue()
         if uploaded_file.type == "application/pdf":
             pages = render_pdf_pages_to_bytes(file_bytes, max_pages=max_pages, scale=scale)
         else:
             img = Image.open(io.BytesIO(file_bytes))
-            pages = [pil_to_jpeg_bytes(img, JPEG_QUALITY_FULL, FULL_MAX_SIDE)]
+            pages = [pil_to_jpeg_bytes(img, quality=JPEG_QUALITY_FULL, max_side=FULL_MAX_SIDE)]
 
         st.session_state.page_bytes = pages
-        st.session_state.last_fn = uploaded_file.name
+        st.session_state.last_key = file_key
 
         st.session_state.results = {}
         st.session_state.chats = {}
         st.session_state.warn_db = False
+        gc.collect()
 
         if st.session_state.auth and st.session_state.u_email:
-            restored = load_reports(st.session_state.u_email, st.session_state.last_fn)
+            restored = load_reports(st.session_state.u_email, uploaded_file.name)
             if restored:
                 st.session_state.results.update(restored)
 
@@ -888,7 +882,7 @@ else:
     selected_indices = parse_pages(page_spec, total_pages)
 
 if not st.session_state.auth and len(selected_indices) > DEMO_LIMIT_PAGES:
-    st.warning(f"Demo rejim: maksimal {DEMO_LIMIT_PAGES} sahifa. Premium uchun Email bilan kiring.")
+    st.warning(f"Demo rejim: maksimal {DEMO_LIMIT_PAGES} sahifa tahlil qilinadi. Premium uchun Email bilan kiring.")
     selected_indices = selected_indices[:DEMO_LIMIT_PAGES]
 
 if not st.session_state.results and selected_indices:
@@ -899,7 +893,7 @@ if not st.session_state.results and selected_indices:
 
 
 # ==========================================
-# RUN ANALYSIS
+# RUN ANALYSIS (2-step)
 # ==========================================
 if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
     if not selected_indices:
@@ -908,20 +902,16 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
 
     hint_lang = "" if (auto_detect or lang == "Noma'lum") else lang
     hint_era = "" if (auto_detect or era == "Noma'lum") else era
-    prompt = build_prompt(hint_lang, hint_era)
+    p_read, p_an = build_prompts(hint_lang, hint_era)
 
     total = len(selected_indices)
     done = 0
     bar = st.progress(0.0)
 
     for idx in selected_indices:
-        # Agar natija bor bo'lsa va force emas -> skip
-        if (not force_rerun) and st.session_state.results.get(idx) and not str(st.session_state.results[idx]).startswith("Xato:"):
-            done += 1
-            bar.progress(done / max(total, 1))
-            continue
-
+        time.sleep(random.uniform(*BATCH_DELAY_RANGE))
         reserved = False
+
         with st.status(f"Sahifa {idx+1}...") as s:
             try:
                 # credits only if auth
@@ -930,7 +920,7 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
                     if not ok:
                         s.update(label="Kredit yetarli emas", state="error")
                         st.warning("Kredit tugagan.")
-                        log_usage(st.session_state.u_email, st.session_state.last_fn, idx, "no_credits")
+                        log_usage(st.session_state.u_email, uploaded_file.name, idx, "no_credits")
                         done += 1
                         bar.progress(done / max(total, 1))
                         continue
@@ -938,47 +928,81 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
 
                 img_bytes = processed_pages[idx]
 
-                # 1-urinish: normal payloads
+                # STEP A: READ (full + tiles)
                 payloads = build_payloads_from_page(img_bytes, hi_res=False)
-                text = safe_generate([prompt, *payloads], max_tokens=MAX_OUT_TOKENS).strip()
+                read_text = generate_with_retry([p_read, *payloads], max_tokens=MAX_OUT_TOKENS_READ).strip()
 
-                # Agar bo'limlar chiqmasa yoki translit juda qisqa bo'lsa: HI-RES bilan 1 retry
-                if (not has_required_sections(text)) or (translit_length(text) < 250):
-                    prompt2 = prompt + "\nMUHIM: Transliteratsiyani maksimal to‘liq yozing; bo‘sh qoldirmang."
+                if not has_read_sections(read_text):
+                    # HI-RES retry
                     payloads2 = build_payloads_from_page(img_bytes, hi_res=True)
-                    text2 = safe_generate([prompt2, *payloads2], max_tokens=MAX_OUT_TOKENS).strip()
-                    if text2 and len(text2) > len(text):
-                        text = text2
+                    read_text2 = generate_with_retry(
+                        [p_read + "\nMUHIM: Formatni buzmay yozing. 0) va 1) bo‘limlar majburiy.", *payloads2],
+                        max_tokens=MAX_OUT_TOKENS_READ
+                    ).strip()
+                    if read_text2:
+                        read_text = read_text2
 
-                if not text:
-                    raise RuntimeError("Bo‘sh natija qaytdi.")
+                translit = extract_translit(read_text)
 
-                st.session_state.results[idx] = text
+                if not translit_ok(translit):
+                    # yana bir qat’iy retry (HI-RES)
+                    payloads3 = build_payloads_from_page(img_bytes, hi_res=True)
+                    read_text3 = generate_with_retry(
+                        [p_read + "\nMUHIM: Transliteratsiya juda qisqa. Zoom/tilesdan foydalanib MATNNI TO‘LIQ yozing.",
+                         *payloads3],
+                        max_tokens=MAX_OUT_TOKENS_READ
+                    ).strip()
+                    if read_text3:
+                        read_text = read_text3
+                        translit = extract_translit(read_text)
+
+                if not translit.strip():
+                    raise RuntimeError("Transliteratsiya olinmadi (bo‘sh).")
+
+                # STEP B: ANALYZE (text-only)
+                an_prompt = p_an + "\n\nTRANSLITERATSIYA:\n" + translit
+                an_text = generate_with_retry([an_prompt], max_tokens=MAX_OUT_TOKENS_AN).strip()
+
+                if not has_an_sections(an_text):
+                    an_text2 = generate_with_retry(
+                        [an_prompt + "\nMUHIM: Faqat 2) va 6) bo‘limlarni to‘liq yozing."],
+                        max_tokens=MAX_OUT_TOKENS_AN
+                    ).strip()
+                    if an_text2:
+                        an_text = an_text2
+
+                final_text = (read_text.strip() + "\n\n" + an_text.strip()).strip()
+                st.session_state.results[idx] = final_text
+
                 s.update(label="Tayyor!", state="complete")
 
                 if st.session_state.auth:
-                    save_report(st.session_state.u_email, st.session_state.last_fn, idx, text)
-                    log_usage(st.session_state.u_email, st.session_state.last_fn, idx, "ok")
+                    save_report(st.session_state.u_email, uploaded_file.name, idx, final_text)
+                    log_usage(st.session_state.u_email, uploaded_file.name, idx, "ok")
 
             except Exception as e:
                 if reserved:
                     refund_credit_safe(st.session_state.u_email, 1)
+
                 err_txt = f"Xato: {type(e).__name__}: {e}"
                 st.session_state.results[idx] = err_txt
+
                 s.update(label="Xato (refund)", state="error")
                 st.error(err_txt)
+
                 if st.session_state.auth:
-                    log_usage(st.session_state.u_email, st.session_state.last_fn, idx, "error", note=str(e))
+                    log_usage(st.session_state.u_email, uploaded_file.name, idx, "error", note=str(e))
 
         done += 1
         bar.progress(done / max(total, 1))
 
+    bar.progress(1.0)
     st.success("Tahlil yakunlandi.")
     gc.collect()
 
 
 # ==========================================
-# RESULTS + CHAT + WORD
+# RESULTS
 # ==========================================
 if st.session_state.results:
     st.divider()
@@ -998,6 +1022,7 @@ if st.session_state.results:
             </div>
             """
 
+            # unique copy button per page (no conflicts)
             copy_js = f"""
             <button id="copybtn_{idx}" style="
                 width:100%;
@@ -1034,7 +1059,7 @@ if st.session_state.results:
                     else:
                         newv = st.text_area("Tahrir:", value=res, height=260, key=f"ed_{idx}")
                         st.session_state.results[idx] = newv
-                        save_report(st.session_state.u_email, st.session_state.last_fn, idx, newv)
+                        save_report(st.session_state.u_email, uploaded_file.name, idx, newv)
                 with tabs[3]:
                     if not st.session_state.auth:
                         st.info("🔒 Chat premium. Email bilan kiring.")
@@ -1053,7 +1078,7 @@ if st.session_state.results:
                                         "Javob o‘zbekcha, aniq va qisqa bo‘lsin.\n\n"
                                         f"NATIJA:\n{res}\n\nSAVOL:\n{user_q}\n"
                                     )
-                                    chat_text = safe_generate([chat_prompt], max_tokens=1400).strip()
+                                    chat_text = generate_with_retry([chat_prompt], max_tokens=1600).strip()
                                     st.session_state.chats[idx].append({"q": user_q, "a": chat_text})
                                     st.rerun()
             else:
@@ -1069,7 +1094,7 @@ if st.session_state.results:
                     else:
                         newv = st.text_area("Tahrir:", value=res, height=220, key=f"ed_side_{idx}")
                         st.session_state.results[idx] = newv
-                        save_report(st.session_state.u_email, st.session_state.last_fn, idx, newv)
+                        save_report(st.session_state.u_email, uploaded_file.name, idx, newv)
 
                         with st.expander("💬 AI Chat (shu varaq bo‘yicha)", expanded=False):
                             st.session_state.chats.setdefault(idx, [])
@@ -1086,7 +1111,7 @@ if st.session_state.results:
                                             "Javob o‘zbekcha, aniq va qisqa bo‘lsin.\n\n"
                                             f"NATIJA:\n{res}\n\nSAVOL:\n{user_q}\n"
                                         )
-                                        chat_text = safe_generate([chat_prompt], max_tokens=1400).strip()
+                                        chat_text = generate_with_retry([chat_prompt], max_tokens=1600).strip()
                                         st.session_state.chats[idx].append({"q": user_q, "a": chat_text})
                                         st.rerun()
 
@@ -1094,7 +1119,7 @@ if st.session_state.results:
     if st.session_state.auth and st.session_state.results:
         detected = aggregate_detected_meta(st.session_state.results)
         meta = {
-            "Hujjat nomi": st.session_state.last_fn,
+            "Hujjat nomi": uploaded_file.name,
             "Til (ko‘p uchragan)": detected["til"] or "Noma'lum",
             "Xat uslubi (ko‘p uchragan)": detected["xat"] or "Noma'lum",
             "Avto aniqlash": "Ha" if auto_detect else "Yo‘q",
