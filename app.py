@@ -54,26 +54,26 @@ RATE_WINDOW_SEC = 60
 MAX_RETRIES = 6
 
 # Output length
-MAX_OUT_TOKENS = 4096
+MAX_OUT_TOKENS = 8192
 
 # Image sizing (keep moderate for speed)
 FULL_MAX_SIDE = 1700
 CROP_MAX_SIDE = 1900
 TILE_MAX_SIDE = 1800
 
-JPEG_QUALITY_FULL = 80
-JPEG_QUALITY_CROP = 82
-JPEG_QUALITY_TILE = 82
+JPEG_QUALITY_FULL = 85
+JPEG_QUALITY_CROP = 87
+JPEG_QUALITY_TILE = 87
 
 # PDF
-PDF_SCALE_DEFAULT = 2.2
+PDF_SCALE_DEFAULT = 2.5
 
 # Demo limitations (if no auth)
 DEMO_LIMIT_PAGES = 3
 
 # Adaptive payload thresholds (very conservative)
-MAX_QMARKS_LIGHT = 18          # if too many "[?]" in output, use heavy once
-MIN_TEXT_LEN_LIGHT = 320       # extremely short output -> heavy once
+MAX_QMARKS_LIGHT = 12         # if too many "[?]" in output, use heavy once
+MIN_TEXT_LEN_LIGHT = 400     # extremely short output -> heavy once
 MAX_RETRY_PER_PAGE = 1         # max extra request per page (adaptive heavy)
 
 
@@ -957,3 +957,4 @@ if st.session_state.results:
         st.info("Word eksport uchun python-docx kerak (serverda o‘rnatilmagan bo‘lishi mumkin).")
 
 gc.collect()
+
