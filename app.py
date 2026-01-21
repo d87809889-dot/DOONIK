@@ -46,7 +46,7 @@ st.set_page_config(
 # =========================================================
 # 2) CONSTANTS (MODEL LOCKED - DO NOT CHANGE)
 # =========================================================
-MODEL_NAME = "gemini-1.5-flash"  # ✅ To'g'ri model nomi
+MODEL_NAME = "gemini-1.5-flash-latest"  # ✅ To'g'ri model nomi
 
 # Rate-limit safety
 SAFE_RPM_DEFAULT = 8
@@ -1012,3 +1012,4 @@ if st.session_state.results:
         st.info("Word eksport uchun python-docx kerak (serverda o'rnatilmagan bo'lishi mumkin).")
 
 gc.collect()
+
