@@ -220,7 +220,7 @@ def _get_secret(key: str, default=None):
         return default
 
 
-GEMINI_API_KEY = _get_secret("GEMINI_API_KEY", "")
+GEMINI_API_KEY = _get_secret("AIzaSyBAdOCQDBoan8rH6SK8gbxTf4y8k7RE--s", "")
 APP_PASSWORD = _get_secret("APP_PASSWORD", "")
 
 SUPABASE_URL = _get_secret("SUPABASE_URL", "")
@@ -242,7 +242,7 @@ def get_db():
 db = get_db()
 
 if not GEMINI_API_KEY:
-    st.error("GEMINI_API_KEY topilmadi. Streamlit secrets’ga GEMINI_API_KEY qo‘ying.")
+    st.error("AIzaSyBAdOCQDBoan8rH6SK8gbxTf4y8k7RE--s")
     st.stop()
 
 
@@ -957,4 +957,5 @@ if st.session_state.results:
         st.info("Word eksport uchun python-docx kerak (serverda o‘rnatilmagan bo‘lishi mumkin).")
 
 gc.collect()
+
 
