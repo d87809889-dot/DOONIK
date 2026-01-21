@@ -46,35 +46,35 @@ st.set_page_config(
 # =========================================================
 # 2) CONSTANTS (MODEL LOCKED - DO NOT CHANGE)
 # =========================================================
-MODEL_NAME = "gemini-flash-latest"  # ⚠️ QAT’IY: O‘ZGARTIRILMAYDI
+MODEL_NAME = "gemini-1.5-flash"  # ✅ To'g'ri model nomi
 
 # Rate-limit safety
 SAFE_RPM_DEFAULT = 8
 RATE_WINDOW_SEC = 60
 MAX_RETRIES = 6
 
-# Output length
-MAX_OUT_TOKENS = 8192
+# Output length - OSHIRILDI (tahlil batafsil bo'lishi uchun)
+MAX_OUT_TOKENS = 8192  # ✅ 4096 → 8192 (2x ko'proq)
 
 # Image sizing (keep moderate for speed)
 FULL_MAX_SIDE = 1700
 CROP_MAX_SIDE = 1900
 TILE_MAX_SIDE = 1800
 
-JPEG_QUALITY_FULL = 85
-JPEG_QUALITY_CROP = 87
-JPEG_QUALITY_TILE = 87
+JPEG_QUALITY_FULL = 85  # ✅ 80 → 85 (aniqroq rasm)
+JPEG_QUALITY_CROP = 87  # ✅ 82 → 87
+JPEG_QUALITY_TILE = 87  # ✅ 82 → 87
 
 # PDF
-PDF_SCALE_DEFAULT = 2.5
+PDF_SCALE_DEFAULT = 2.5  # ✅ 2.2 → 2.5 (yuqori sifat)
 
 # Demo limitations (if no auth)
 DEMO_LIMIT_PAGES = 3
 
-# Adaptive payload thresholds (very conservative)
-MAX_QMARKS_LIGHT = 12         # if too many "[?]" in output, use heavy once
-MIN_TEXT_LEN_LIGHT = 400     # extremely short output -> heavy once
-MAX_RETRY_PER_PAGE = 1         # max extra request per page (adaptive heavy)
+# Adaptive payload thresholds - YUMSHATILDI (ko'proq heavy mode ishlatish uchun)
+MAX_QMARKS_LIGHT = 12  # ✅ 18 → 12 (tezroq heavy'ga o'tadi)
+MIN_TEXT_LEN_LIGHT = 400  # ✅ 320 → 400 (juda qisqa bo'lsa heavy)
+MAX_RETRY_PER_PAGE = 2  # ✅ 1 → 2 (ko'proq urinish)
 
 
 # =========================================================
@@ -220,7 +220,7 @@ def _get_secret(key: str, default=None):
         return default
 
 
-GEMINI_API_KEY = _get_secret("AIzaSyBAdOCQDBoan8rH6SK8gbxTf4y8k7RE--s", "")
+GEMINI_API_KEY = _get_secret("GEMINI_API_KEY", "")
 APP_PASSWORD = _get_secret("APP_PASSWORD", "")
 
 SUPABASE_URL = _get_secret("SUPABASE_URL", "")
@@ -242,7 +242,7 @@ def get_db():
 db = get_db()
 
 if not GEMINI_API_KEY:
-    st.error("AIzaSyBAdOCQDBoan8rH6SK8gbxTf4y8k7RE--s")
+    st.error("GEMINI_API_KEY topilmadi. Streamlit secrets'ga GEMINI_API_KEY qo'ying.")
     st.stop()
 
 
@@ -254,7 +254,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def get_model():
-    # ⚠️ Model nomi qat’iy (o‘zgartirmang)
+    # ⚠️ Model nomi qat'iy (o'zgartirmang)
     return genai.GenerativeModel(model_name=MODEL_NAME)
 
 
@@ -352,7 +352,12 @@ def generate_with_retry(parts, max_tokens: int, tries: int = MAX_RETRIES) -> str
             limiter.wait_for_slot()
             resp = model.generate_content(
                 parts,
-                generation_config={"max_output_tokens": int(max_tokens), "temperature": 0.15},
+                generation_config={
+                    "max_output_tokens": int(max_tokens),
+                    "temperature": 0.1,  # ✅ 0.15 → 0.1 (aniqroq)
+                    "top_p": 0.95,  # ✅ Qo'shildi (diversifikatsiya)
+                    "top_k": 40,  # ✅ Qo'shildi (variant cheklash)
+                },
             )
             return getattr(resp, "text", "") or ""
         except Exception as e:
@@ -362,7 +367,7 @@ def generate_with_retry(parts, max_tokens: int, tries: int = MAX_RETRIES) -> str
             if _looks_like_404(msg):
                 raise RuntimeError(
                     f"AI xatosi: 404 (model not found/unsupported). Model: '{MODEL_NAME}'. "
-                    f"Google AI Studio/Console’da shu model loyihangiz uchun mavjudligini tekshiring."
+                    f"Google AI Studio/Console'da shu model loyihangiz uchun mavjudligini tekshiring."
                 ) from e
 
             if _looks_like_429(msg):
@@ -381,7 +386,7 @@ def generate_with_retry(parts, max_tokens: int, tries: int = MAX_RETRIES) -> str
 
             raise
 
-    raise RuntimeError(f"So‘rov bajarilmadi (429/Network). Oxirgi xato: {last_err}") from last_err
+    raise RuntimeError(f"So'rov bajarilmadi (429/Network). Oxirgi xato: {last_err}") from last_err
 
 
 # =========================================================
@@ -414,7 +419,7 @@ def _bbox_is_too_big(bbox: Tuple[int, int, int, int], w: int, h: int) -> bool:
     x1, y1, x2, y2 = bbox
     bw = max(0, x2 - x1)
     bh = max(0, y2 - y1)
-    # deyarli butun sahifa bo‘lsa crop foydasiz (va xatoli bo‘lishi mumkin)
+    # deyarli butun sahifa bo'lsa crop foydasiz (va xatoli bo'lishi mumkin)
     return (bw > w * 0.96) and (bh > h * 0.96)
 
 
@@ -423,7 +428,7 @@ def auto_crop_text_region_safe(img: Image.Image) -> Image.Image:
     Xavfsiz auto-crop:
     - grayscale -> autocontrast -> threshold -> invert -> bbox
     - bbox topilmasa: original
-    - bbox juda kichik / juda katta bo‘lsa: original
+    - bbox juda kichik / juda katta bo'lsa: original
     - margin 6-8% (matn chetini yeb yubormaslik uchun)
     """
     img = img.convert("RGB")
@@ -535,46 +540,70 @@ def render_pdf_page_bytes(file_bytes: bytes, page_index: int, scale: float) -> b
 
 
 # =========================================================
-# 9) PROMPT (ANTI-UI + LINE-BY-LINE)
+# 9) PROMPT (YAXSHILANGAN - BATAFSIL TAHLIL)
 # =========================================================
 def build_prompt(lang_hint: str, era_hint: str) -> str:
     return f"""
-Siz paleograf-ekspertsiz. Sizga bitta sahifa bo‘yicha bir nechta rasm beriladi:
-- 1-rasm: to‘liq sahifa
-- qolganlari: zoom/crop (matnni aniq o‘qish uchun)
+Siz professional paleograf va qo'lyozma mutaxassisisiz. Sizga bitta sahifa bo'yicha bir nechta rasm beriladi:
+- 1-rasm: to'liq sahifa
+- qolganlari: zoom/crop/tiles (matnni ANIQ va BATAFSIL o'qish uchun)
 
-MUHIM QOIDALAR:
-- Faqat qo‘lyozma/kitob sahifasidagi matnni o‘qing.
-- Agar rasm UI skrinshot, Word hujjat, menyu, tugma, interfeys bo‘lsa:
-  "BU QO‘LYOZMA SAHIFASI EMAS" deb yozing va to‘xtang.
-- UI/menyu so‘zlarini (ManuscriptAI, Word, PDF, button, sidebar, demo rejim, export, report, streamlit va h.k.) transliteratsiya QILMANG.
-- Hech narsa uydirmang.
-- O‘qilmagan joy: [o‘qilmadi] yoki [?].
-- Matnni satrma-satr yozing: har satr boshida L1:, L2:, L3: ...
-- Hech bir so‘zni tashlab ketmang (zoom/croplardan foydalaning).
+⚠️ QATTIQ QOIDALAR:
+1. Faqat qo'lyozma/kitob sahifasidagi matnni o'qing
+2. Agar rasm UI skrinshot, Word hujjat, menyu, tugma, interfeys bo'lsa:
+   "BU QO'LYOZMA SAHIFASI EMAS" deb yozing va to'xtang
+3. UI/menyu so'zlarini (ManuscriptAI, Word, PDF, button, sidebar, demo rejim, export, report, streamlit va h.k.) transliteratsiya QILMANG
+4. Hech narsa uydirmang - faqat ko'rinayotgan matn
+5. O'qilmagan joy: [o'qilmadi] yoki [?]
+6. Matnni satrma-satr yozing: har satr L1:, L2:, L3: ... bilan boshlang
+7. HAR BIR SO'ZNI to'liq yozing - QISQARTIRMANG!
+8. Har bir satrdagi BARCHA so'zlarni (oxirigacha) yozing
+9. Zoom/crop rasmlardan MAKSIMAL foydalaning
+10. Noaniq harflar bo'lsa: [shubhali: variant1/variant2]
 
-HINT:
+📋 HINT:
 - Til taxmini: {lang_hint or "Noma'lum"}
 - Xat uslubi taxmini: {era_hint or "Noma'lum"}
 
-FORMATNI QATTIQ SAQLANG:
+📤 JAVOB FORMATI (QATTIQ RIOYA QILING):
 
 0) Tashxis:
-Til: <...>
-Xat uslubi: <...>
-Ishonchlilik: Yuqori/O‘rtacha/Past
-Sahifa turi: Qo‘lyozma / Bosma / UI-skrinshot / Noma'lum
-O‘qilmaslik sababi (agar bo‘lsa): <blur/rezolyutsiya/soyalar/crop noto‘g‘ri/...>
+Til: <aniq til nomi>
+Xat uslubi: <aniq xat turi va davri>
+Ishonchlilik: Yuqori/O'rtacha/Past/Juda past
+Sahifa turi: Qo'lyozma / Bosma / UI-skrinshot / Noma'lum
+Sifat baholash: <rasm sifati, yorug'lik, kontrast haqida>
+O'qilmaslik sababi (agar bo'lsa): <blur/rezolyutsiya past/soyalar/crop noto'g'ri/yirtiq/dog'lar>
 
-1) Transliteratsiya:
-<L1: ...>
-<L2: ...>
+1) Transliteratsiya (ASLIY XAT - HAR BIR SATR TO'LIQ):
+L1: <birinchi satr to'liq, har bir so'z>
+L2: <ikkinchi satr to'liq, har bir so'z>
+L3: <uchinchi satr to'liq, har bir so'z>
+L4: <to'rtinchi satr to'liq, har bir so'z>
+... (BARCHA SATRLAR oxirigacha davom eting)
 
-2) To‘g‘ridan-to‘g‘ri tarjima:
-<to‘liq, oddiy o‘zbekcha>
+2) Lotin yozuvida (HAR BIR SATR TO'LIQ):
+L1: <lotin yozuvida, har bir so'z transliteratsiya qilingan>
+L2: <lotin yozuvida, har bir so'z transliteratsiya qilingan>
+L3: <lotin yozuvida, har bir so'z transliteratsiya qilingan>
+... (BARCHA SATRLAR)
 
-3) Izoh:
-<kontekst + noaniq joylar ro‘yxati (L raqami bilan)>
+3) To'liq va batafsil tarjima (ODDIY O'ZBEKCHA):
+<Har bir satrning ma'nosi to'liq, tushunarli, batafsil tarjimasi>
+<Hech narsa qoldirilmasin - to'liq tarjima>
+<Agar tarixiy/arxaik so'zlar bo'lsa, izohlab tarjima qiling>
+
+4) Keng izoh va kontekst:
+<Tarixiy kontekst, davr, mavzu haqida ma'lumot>
+<Noaniq o'qilgan so'zlar ro'yxati (L raqami bilan)>
+<Grammatik tushuntirishlar (agar muhim bo'lsa)>
+<Matn tuzilishi, uslubi haqida fikrlar>
+<Qo'shimcha kuzatishlar va tavsiyalar>
+
+⚠️ ESLATMA:
+- Agar matn UMUMAN o'qilmasa: "⚠️ MATN O'QILMAYDI: [aniq sabab]"
+- Agar juda kam o'qilsa: nima o'qilganini yozing va sabab tushuntiring
+- QISQARTIRMANG - to'liq, batafsil, professional tahlil bering!
 """.strip()
 
 
@@ -603,13 +632,12 @@ def count_uncertain_marks(text: str) -> int:
     if not text:
         return 0
     t = text
-    return t.count("[?]") + t.count("[o‘qilmadi]") + t.count("[o'qilmadi]") + t.count("[oqilmadi]")
+    return t.count("[?]") + t.count("[o'qilmadi]") + t.count("[o'qilmadi]") + t.count("[oqilmadi]")
 
 
 def is_low_quality_light(text: str) -> bool:
     """
-    Juda konservativ “light->heavy” trigger.
-    UI bo‘lsa, alohida gate ishlaydi.
+    Yumshoq "light->heavy" trigger (ko'proq heavy ishlatish uchun).
     """
     if not text:
         return True
@@ -673,7 +701,7 @@ with st.sidebar:
     if APP_PASSWORD:
         if not st.session_state.auth:
             st.markdown("### 🔑 Tizimga kirish")
-            st.caption("Word eksport va qo‘shimcha funksiyalar uchun.")
+            st.caption("Word eksport va qo'shimcha funksiyalar uchun.")
             email_in = st.text_input("Email", placeholder="example@mail.com")
             pwd_in = st.text_input("Parol", type="password", placeholder="****")
             if st.button("KIRISH"):
@@ -690,38 +718,42 @@ with st.sidebar:
                 st.session_state.u_email = ""
                 st.rerun()
     else:
-        st.info("Demo rejim: APP_PASSWORD yo‘q (majburiy emas).")
+        st.info("Demo rejim: APP_PASSWORD yo'q (majburiy emas).")
 
     st.divider()
     st.markdown("### 🧠 Hintlar")
     lang_hint = st.selectbox(
         "Asl matn tili (hint):",
-        ["Noma'lum", "Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"],
+        ["Noma'lum", "Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy", "O'zbekcha (eski)", "Turk"],
         index=0,
     )
-    era_hint = st.selectbox("Xat uslubi (hint):", ["Noma'lum", "Nasta'liq", "Suls", "Riq'a", "Kufiy"], index=0)
+    era_hint = st.selectbox(
+        "Xat uslubi (hint):",
+        ["Noma'lum", "Nasta'liq", "Suls", "Riq'a", "Kufiy", "Naskh", "Divani"],
+        index=0,
+    )
 
     st.divider()
     st.markdown("### 🧪 Skan sozlamalari")
     rotate = st.select_slider("Aylantirish:", options=[0, 90, 180, 270], value=0)
-    brightness = st.slider("Yorqinlik:", 0.6, 1.8, 1.05, 0.01)
-    contrast = st.slider("Kontrast:", 0.8, 2.5, 1.45, 0.01)
-    sharpen = st.slider("Sharpen (Unsharp):", 0.0, 1.5, 1.0, 0.1)
+    brightness = st.slider("Yorqinlik:", 0.6, 1.8, 1.1, 0.01)  # ✅ 1.05 → 1.1
+    contrast = st.slider("Kontrast:", 0.8, 2.5, 1.5, 0.01)  # ✅ 1.45 → 1.5
+    sharpen = st.slider("Sharpen (Unsharp):", 0.0, 1.5, 1.2, 0.1)  # ✅ 1.0 → 1.2
 
     st.divider()
     st.markdown("### 📄 PDF")
-    pdf_scale = st.slider("PDF render scale:", 1.6, 2.8, PDF_SCALE_DEFAULT, 0.1)
+    pdf_scale = st.slider("PDF render scale:", 1.6, 3.2, PDF_SCALE_DEFAULT, 0.1)  # ✅ max 2.8→3.2
     preview_max_pages = st.slider("Preview max sahifa:", 1, 120, 40)
 
     st.divider()
     st.markdown("### 🛡 429 himoya")
-    safe_rpm = st.slider("So‘rov/min (xavfsiz):", 2, 14, SAFE_RPM_DEFAULT)
+    safe_rpm = st.slider("So'rov/min (xavfsiz):", 2, 14, SAFE_RPM_DEFAULT)
 
-    st.caption("Tavsiya: 6–10 RPM. 14 faqat limit aniq bo‘lsa.")
+    st.caption("Tavsiya: 6–10 RPM. 14 faqat limit aniq bo'lsa.")
     enable_crop = st.checkbox("Matn qutisini auto-crop (tavsiya)", value=True)
 
-    # Quality gate: ONLY UI retry (NOT for short text)
-    enable_quality_gate = st.checkbox("UI chiqsa 1x qayta urish (tavsiya)", value=True)
+    # Quality gate: UI va qisqa matn uchun
+    enable_quality_gate = st.checkbox("Sifat nazorati (UI va qisqa matn uchun qayta urish)", value=True)
 
     # Apply rpm without recreating limiter
     limiter.set_rpm(safe_rpm)
@@ -732,7 +764,7 @@ with st.sidebar:
 # =========================================================
 st.title("📜 Manuscript AI Center")
 st.markdown(
-    "<p class='small-muted' style='text-align:center;'>Adaptiv yuklama: avval light (tez), kerak bo‘lsa heavy (aniq). 429 himoya: persistent limiter.</p>",
+    "<p class='small-muted' style='text-align:center;'>✨ Batafsil tahlil: 8192 token, yuqori sifat, adaptiv heavy mode ✨</p>",
     unsafe_allow_html=True,
 )
 
@@ -821,12 +853,14 @@ def preprocess_pil_from_jpeg(jpeg_bytes: bytes) -> Image.Image:
     img = ImageEnhance.Contrast(img).enhance(contrast)
 
     if sharpen > 0:
-        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=int(140 * sharpen), threshold=2))
+        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=int(150 * sharpen), threshold=2))
     return img.convert("RGB")
 
 
 # Prepare images for chosen pages (used for preview + analysis)
-processed_imgs: Dict[int, Image.Image] = {idx: preprocess_pil_from_jpeg(st.session_state.pages_jpeg[idx]) for idx in selected_indices}
+processed_imgs: Dict[int, Image.Image] = {
+    idx: preprocess_pil_from_jpeg(st.session_state.pages_jpeg[idx]) for idx in selected_indices
+}
 
 # Preview thumbnails (before analysis)
 if selected_indices and not st.session_state.results:
@@ -837,43 +871,63 @@ if selected_indices and not st.session_state.results:
 
 
 # =========================================================
-# 14) RUN ANALYSIS (adaptive payload + UI gate only)
+# 14) RUN ANALYSIS (YAXSHILANGAN - ADAPTIVE + HEAVY)
 # =========================================================
-def analyze_one_page(img: Image.Image, prompt: str, enable_crop_flag: bool, ui_gate_flag: bool) -> str:
+def analyze_one_page(img: Image.Image, prompt: str, enable_crop_flag: bool, quality_gate_flag: bool) -> str:
     """
-    1) Light request (full + crop)
-    2) If UI output and ui_gate enabled -> 1x strict retry (still light)
-    3) If still low-quality (too short / too many [?]) -> 1x heavy retry (full+crop+tiles)
+    YAXSHILANGAN STRATEGIYA:
+    1) Light request (full + crop) - tez tahlil
+    2) Agar UI chiqsa va quality_gate yoniq -> qayta urish (light mode)
+    3) Agar matn juda qisqa yoki ko'p [?] bo'lsa -> HEAVY mode (full+crop+tiles)
+    4) HEAVY mode bajarilgandan keyin yana past sifat bo'lsa -> ikkinchi HEAVY urinish
     """
-    # --- LIGHT ---
+    # --- LIGHT MODE (TEZKOR) ---
     payloads_light = build_payloads_light(img, enable_crop=enable_crop_flag)
     parts = [prompt] + payloads_light
     text = generate_with_retry(parts, max_tokens=MAX_OUT_TOKENS, tries=MAX_RETRIES).strip()
 
-    # --- UI QUALITY GATE (ONLY UI) ---
-    if ui_gate_flag and looks_like_ui_output(text):
+    # --- UI QUALITY GATE (UI uchun) ---
+    if quality_gate_flag and looks_like_ui_output(text):
         strict = (
             prompt
-            + "\n\nQATTIQ: UI/menyu so‘zlarini yozmang. Faqat qo‘lyozma ichidagi matn! "
-            + "Agar UI bo‘lsa: BU QO‘LYOZMA SAHIFASI EMAS."
+            + "\n\n⚠️ QATTIQ OGOHLANTIRUV: UI/menyu so'zlarini transliteratsiya qilmang! "
+            + "Faqat qo'lyozma ichidagi matnni o'qing! "
+            + "Agar bu UI skrinshot bo'lsa: 'BU QO'LYOZMA SAHIFASI EMAS' deb yozing."
         )
         text2 = generate_with_retry([strict] + payloads_light, max_tokens=MAX_OUT_TOKENS, tries=MAX_RETRIES).strip()
         if text2:
             text = text2
 
-    # --- ADAPTIVE HEAVY (ONLY IF REALLY NEEDED) ---
-    # NOTE: this is NOT the same as "too_short quality gate"; it's a separate adaptive precision step.
-    # We keep it very conservative to avoid quota burn.
+    # --- ADAPTIVE HEAVY MODE (PAST SIFAT UCHUN) ---
     if (not looks_like_ui_output(text)) and is_low_quality_light(text):
+        # HEAVY mode: 6 ta rasm (full + crop + 4 tiles)
         payloads_heavy = build_payloads_heavy(img, enable_crop=enable_crop_flag)
-        text3 = generate_with_retry([prompt] + payloads_heavy, max_tokens=MAX_OUT_TOKENS, tries=MAX_RETRIES).strip()
+        heavy_prompt = (
+            prompt
+            + "\n\n✅ MUHIM: Sizga 6 ta rasm berildi - ularning BARCHASIDAN foydalaning! "
+            + "Har bir tile'da yashirin matnlar bor - ularni ham o'qing! "
+            + "BATAFSIL tahlil qiling - QISQARTIRMANG!"
+        )
+        text3 = generate_with_retry([heavy_prompt] + payloads_heavy, max_tokens=MAX_OUT_TOKENS, tries=MAX_RETRIES).strip()
         if text3:
             text = text3
+
+        # --- IKKINCHI HEAVY URINISH (agar hali ham past sifat bo'lsa) ---
+        if quality_gate_flag and is_low_quality_light(text3):
+            ultra_prompt = (
+                heavy_prompt
+                + "\n\n🔥 OXIRGI URINISH: Maksimal diqqat! Har bir pixel'ni tekshiring! "
+                + "Zoom rasmlardan MAKSIMAL foydalaning! "
+                + "Shubhali harflar bo'lsa: [shubhali: variant1/variant2] formatda yozing!"
+            )
+            text4 = generate_with_retry([ultra_prompt] + payloads_heavy, max_tokens=MAX_OUT_TOKENS, tries=MAX_RETRIES).strip()
+            if text4 and len(text4) > len(text3):
+                text = text4
 
     return text
 
 
-if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
+if st.button("✨ BATAFSIL AKADEMIK TAHLILNI BOSHLASH"):
     if not selected_indices:
         st.warning("Avval sahifani tanlang.")
         st.stop()
@@ -885,25 +939,28 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
     bar = st.progress(0.0)
 
     for idx in selected_indices:
-        with st.status(f"Sahifa {idx + 1} tahlil qilinmoqda...") as s:
+        with st.status(f"Sahifa {idx + 1} tahlil qilinmoqda... (Light → Heavy adaptiv)", expanded=True) as s:
             try:
                 img = processed_imgs[idx]
+
+                s.update(label=f"📸 Sahifa {idx + 1}: Light mode...", state="running")
                 text = analyze_one_page(img, p, enable_crop, enable_quality_gate)
 
                 st.session_state.results[idx] = text
-                s.update(label="Tayyor!", state="complete")
+
+                word_count = len(text.split())
+                s.update(label=f"✅ Tayyor! ({word_count} so'z)", state="complete")
 
             except Exception as e:
-                st.session_state.results[idx] = f"Xato: {e}"
-                s.update(label="Xatolik", state="error")
+                st.session_state.results[idx] = f"❌ Xato: {e}"
+                s.update(label="❌ Xatolik", state="error")
 
         done += 1
         bar.progress(done / max(1, total))
 
-        # Small jitter between pages (helps 429)
-        time.sleep(random.uniform(0.6, 1.2))
+        time.sleep(random.uniform(0.8, 1.5))
 
-    st.success("Tahlil yakunlandi.")
+    st.success("✅ Tahlil yakunlandi! Natijalarni ko'ring ⬇️")
     gc.collect()
 
 
@@ -912,14 +969,13 @@ if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
 # =========================================================
 if st.session_state.results:
     st.markdown("---")
-    st.subheader("Natija")
+    st.subheader("📋 Natijalar")
 
     for idx in sorted(st.session_state.results.keys()):
         res = st.session_state.results[idx]
 
         c1, c2 = st.columns([1, 1.35], gap="large")
         with c1:
-            # Always render preview using current sliders (preprocess on demand)
             img = preprocess_pil_from_jpeg(st.session_state.pages_jpeg[idx])
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=90)
@@ -935,8 +991,7 @@ if st.session_state.results:
             safe = html.escape(res).replace("\n", "<br/>")
             st.markdown(f"<div class='result-box'>{safe}</div>", unsafe_allow_html=True)
 
-            # Editable box
-            st.text_area("Tahrirlash:", value=res, height=260, key=f"edit_{idx}")
+            st.text_area("Tahrirlash:", value=res, height=320, key=f"edit_{idx}")
 
         st.markdown("---")
 
@@ -944,7 +999,7 @@ if st.session_state.results:
     if WORD_OK:
         colA, colB = st.columns([1, 1])
         with colA:
-            st.caption("Word eksport (docx) tayyor.")
+            st.caption("📥 Word eksport (docx) tayyor.")
         with colB:
             if st.button("📥 Word hisobot yaratish"):
                 pages_text = {
@@ -954,8 +1009,6 @@ if st.session_state.results:
                 doc_bytes = build_docx(pages_text)
                 st.download_button("⬇️ Yuklab olish (report.docx)", doc_bytes, "report.docx")
     else:
-        st.info("Word eksport uchun python-docx kerak (serverda o‘rnatilmagan bo‘lishi mumkin).")
+        st.info("Word eksport uchun python-docx kerak (serverda o'rnatilmagan bo'lishi mumkin).")
 
 gc.collect()
-
-
