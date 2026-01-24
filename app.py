@@ -43,6 +43,8 @@ if "compare_mode" not in st.session_state:
     st.session_state.compare_mode = False
 if "current_page_index" not in st.session_state:
     st.session_state.current_page_index = 0
+if "show_landing" not in st.session_state:
+    st.session_state.show_landing = True
 
 # ==========================================
 # THEME DEFINITIONS
@@ -704,6 +706,171 @@ def render_page(file_content, page_idx, scale, is_pdf):
         return None
 
 # ==========================================
+# UI CONSTANTS (DEMO METRICS - NOT LIVE DATA)
+# ==========================================
+# NOTE: These are placeholder values for demo purposes
+DEMO_MANUSCRIPTS_ANALYZED = 10247
+DEMO_LANGUAGES_SUPPORTED = 45
+DEMO_AVG_TIME_MINUTES = 2.3
+DEMO_ACCURACY_RATE = 94.7
+DEMO_ACTIVE_USERS = 1234
+DEMO_COUNTRIES = 12
+
+# ==========================================
+# LANDING PAGE FUNCTION (UI ONLY)
+# ==========================================
+def render_landing_page():
+    """Render professional landing page for Hult Prize judges"""
+    
+    # Hero Section
+    st.markdown(f"""
+        <div style='text-align:center; padding:60px 20px; background:{card_bg}; 
+                    border-radius:20px; box-shadow:0 10px 40px rgba(0,0,0,0.15); margin-bottom:40px;'>
+            <h1 style='font-size:clamp(2.5rem, 6vw, 4rem); margin-bottom:20px; border:none; color:{theme['primary']};'>
+                🏛 Manuscript AI
+            </h1>
+            <p style='font-size:clamp(1.2rem, 3vw, 1.8rem); color:{text_secondary}; margin-bottom:30px; line-height:1.6;'>
+                Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya qilish uchun<br>
+                sun'iy intellekt asosidagi akademik platforma
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # CTA Buttons
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        col_demo, col_learn = st.columns(2)
+        with col_demo:
+            if st.button("▶ DEMO'NI BOSHLASH", key="try_demo_btn", use_container_width=True):
+                st.session_state.show_landing = False
+                st.rerun()
+        with col_learn:
+            if st.button("📖 Batafsil Ma'lumot", key="learn_more_btn", use_container_width=True):
+                st.session_state.show_landing = False
+                st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Three-column layout for Problem/Solution/Impact
+    col1, col2, col3 = st.columns(3)
+    
+    # PROBLEM Section
+    with col1:
+        st.markdown(f"""
+            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
+                        border-left:8px solid #e74c3c; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
+                <h2 style='color:#e74c3c; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
+                    📊 MUAMMO
+                </h2>
+                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>100M+</span><br>
+                        <span style='color:{text_secondary};'>qo'lyozmalar arxivda</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>99%</span><br>
+                        <span style='color:{text_secondary};'>raqamli emas</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>$500-1000</span><br>
+                        <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>2-3 hafta</span><br>
+                        <span style='color:{text_secondary};'>manual tahlil vaqti</span>
+                    </li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # SOLUTION Section
+    with col2:
+        st.markdown(f"""
+            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
+                        border-left:8px solid #3498db; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
+                <h2 style='color:#3498db; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
+                    ✨ YECHIM
+                </h2>
+                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>AI-powered</span><br>
+                        <span style='color:{text_secondary};'>OCR va tahlil</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>2 daqiqa</span><br>
+                        <span style='color:{text_secondary};'>tahlil vaqti</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>95%</span><br>
+                        <span style='color:{text_secondary};'>aniqlik darajasi</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>$5-10</span><br>
+                        <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
+                    </li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # IMPACT Section
+    with col3:
+        st.markdown(f"""
+            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
+                        border-left:8px solid #2ecc71; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
+                <h2 style='color:#2ecc71; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
+                    📈 TA'SIR
+                </h2>
+                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_MANUSCRIPTS_ANALYZED:,}</span><br>
+                        <span style='color:{text_secondary};'>tahlil qilingan</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_LANGUAGES_SUPPORTED}</span><br>
+                        <span style='color:{text_secondary};'>til qo'llab-quvvatlash</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_COUNTRIES}</span><br>
+                        <span style='color:{text_secondary};'>mamlakatda foydalanilmoqda</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_ACTIVE_USERS:,}</span><br>
+                        <span style='color:{text_secondary};'>faol foydalanuvchi</span>
+                    </li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # How it Works Section (Expandable)
+    with st.expander("📖 QANDAY ISHLAYDI?", expanded=False):
+        st.markdown(f"""
+            <div style='padding:20px; color:{text_primary};'>
+                <h3 style='color:{theme['accent']}; border:none;'>4 Oddiy Qadam:</h3>
+                <ol style='font-size:1.1rem; line-height:2;'>
+                    <li><b>Yuklash</b> - PDF, PNG, JPG formatidagi qo'lyozma faylini yuklang</li>
+                    <li><b>Sozlash</b> - Til, xat turi va rasm sozlamalarini tanlang</li>
+                    <li><b>Tahlil</b> - AI 2 daqiqada transliteratsiya va tarjima qiladi</li>
+                    <li><b>Export</b> - Natijalarni DOCX, TXT yoki JSON formatida yuklab oling</li>
+                </ol>
+                <p style='margin-top:20px; font-size:1rem; color:{text_secondary};'>
+                    <i>💡 Maslahat: Demo'ni sinab ko'rish uchun yuqoridagi "Demo'ni Boshlash" tugmasini bosing</i>
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Footer note
+    st.markdown(f"""
+        <div style='text-align:center; margin-top:60px; padding:30px; background:{bg_secondary}; border-radius:10px;'>
+            <p style='color:{text_secondary}; font-size:0.9rem; margin:0;'>
+                📊 Ko'rsatilgan statistik ma'lumotlar demo maqsadida keltirilgan<br>
+                🔬 Tadqiqot: d87809889-dot | 📧 Aloqa uchun: {st.session_state.u_email}
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+# ==========================================
 # 4. TADQIQOT INTERFEYSI
 # ==========================================
 with st.sidebar:
@@ -788,6 +955,17 @@ with st.sidebar:
         st.session_state.auth = False
         st.toast("👋 Xayr!", icon="👋")
         st.rerun()
+    
+    # Back to Landing button
+    if not st.session_state.show_landing:
+        if st.button("🏠 Bosh Sahifaga Qaytish", key="back_to_landing"):
+            st.session_state.show_landing = True
+            st.rerun()
+
+# === LANDING PAGE OR MAIN APP ===
+if st.session_state.show_landing:
+    render_landing_page()
+    st.stop()
 
 # === MAIN CONTENT AREA ===
 st.markdown("<h1>📜 Raqamli Qo'lyozmalar Ekspertizasi</h1>", unsafe_allow_html=True)
