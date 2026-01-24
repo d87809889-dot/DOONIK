@@ -1,10 +1,10 @@
-# File: app_improved.py
+# File: app_ultra_pro.py
 
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image, ImageEnhance, ImageOps
 import pypdfium2 as pdfium
-import io, gc, base64
+import io, gc, base64, json
 from datetime import datetime
 from docx import Document
 from supabase import create_client
@@ -20,72 +20,142 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- ENHANCED PROFESSIONAL UI (CSS) ---
-st.markdown("""
+# ==========================================
+# SESSION STATE INITIALIZATION
+# ==========================================
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+if "u_email" not in st.session_state:
+    st.session_state.u_email = ""
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+if "theme" not in st.session_state:
+    st.session_state.theme = "Antik Oltin"
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "imgs" not in st.session_state:
+    st.session_state.imgs = []
+if "results" not in st.session_state:
+    st.session_state.results = {}
+if "chats" not in st.session_state:
+    st.session_state.chats = {}
+if "compare_mode" not in st.session_state:
+    st.session_state.compare_mode = False
+if "current_page_index" not in st.session_state:
+    st.session_state.current_page_index = 0
+
+# ==========================================
+# THEME DEFINITIONS
+# ==========================================
+THEMES = {
+    "Antik Oltin": {
+        "primary": "#0c1421",
+        "accent": "#c5a059",
+        "accent2": "#d4af37",
+        "bg_light": "#f4ecd8",
+        "bg_light2": "#fdfaf1",
+        "bg_dark": "#1a1a1a",
+        "bg_dark2": "#2d2d2d"
+    },
+    "Moviy Akademik": {
+        "primary": "#1e3a8a",
+        "accent": "#3b82f6",
+        "accent2": "#60a5fa",
+        "bg_light": "#eff6ff",
+        "bg_light2": "#dbeafe",
+        "bg_dark": "#1e293b",
+        "bg_dark2": "#334155"
+    },
+    "Yashil Tabiat": {
+        "primary": "#065f46",
+        "accent": "#10b981",
+        "accent2": "#34d399",
+        "bg_light": "#ecfdf5",
+        "bg_light2": "#d1fae5",
+        "bg_dark": "#1a2e1a",
+        "bg_dark2": "#2d4a2d"
+    }
+}
+
+theme = THEMES[st.session_state.theme]
+dark = st.session_state.dark_mode
+
+# Dynamic color variables
+bg_main = theme["bg_dark"] if dark else theme["bg_light"]
+bg_secondary = theme["bg_dark2"] if dark else theme["bg_light2"]
+text_primary = "#e0e0e0" if dark else "#1a1a1a"
+text_secondary = "#a0a0a0" if dark else "#5d4037"
+card_bg = theme["bg_dark2"] if dark else "#ffffff"
+
+# ==========================================
+# DYNAMIC CSS
+# ==========================================
+st.markdown(f"""
     <style>
     /* === SYSTEM OVERRIDES === */
-    footer {visibility: hidden !important;}
-    .stAppDeployButton {display:none !important;}
-    #stDecoration {display:none !important;}
+    footer {{visibility: hidden !important;}}
+    .stAppDeployButton {{display:none !important;}}
+    #stDecoration {{display:none !important;}}
 
-    header[data-testid='stHeader'] {
+    header[data-testid='stHeader'] {{
         background: rgba(0,0,0,0) !important;
         visibility: visible !important;
-    }
+    }}
 
-    button[data-testid='stSidebarCollapseButton'] {
-        background-color: #0c1421 !important;
-        color: #c5a059 !important;
-        border: 1px solid #c5a059 !important;
+    button[data-testid='stSidebarCollapseButton'] {{
+        background-color: {theme['primary']} !important;
+        color: {theme['accent']} !important;
+        border: 1px solid {theme['accent']} !important;
         position: fixed !important;
         z-index: 1000001 !important;
         transition: all 0.3s ease !important;
-    }
+    }}
     
-    button[data-testid='stSidebarCollapseButton']:hover {
-        background-color: #1e3a8a !important;
+    button[data-testid='stSidebarCollapseButton']:hover {{
+        background-color: {theme['accent']} !important;
+        color: {theme['primary']} !important;
         transform: scale(1.05);
-    }
+    }}
 
     /* === MAIN LAYOUT === */
-    .main { 
-        background: linear-gradient(135deg, #f4ecd8 0%, #fdfaf1 100%) !important;
-        color: #1a1a1a !important;
+    .main {{ 
+        background: linear-gradient(135deg, {bg_main} 0%, {bg_secondary} 100%) !important;
+        color: {text_primary} !important;
         font-family: 'Times New Roman', serif;
         padding: 2rem 1rem;
-    }
+    }}
     
     /* === TYPOGRAPHY === */
-    h1, h2, h3, h4 { 
-        color: #0c1421 !important;
+    h1, h2, h3, h4 {{ 
+        color: {theme['primary']} !important;
         font-family: 'Georgia', serif;
-        border-bottom: 2px solid #c5a059;
+        border-bottom: 2px solid {theme['accent']};
         text-align: center;
         padding-bottom: 12px;
         margin-bottom: 20px;
-    }
+    }}
     
-    h1 {
+    h1 {{
         font-size: clamp(1.8rem, 4vw, 2.5rem) !important;
         margin-top: 0;
-    }
+    }}
     
-    h2 {
+    h2 {{
         font-size: clamp(1.4rem, 3vw, 2rem) !important;
-    }
+    }}
     
-    h4 {
+    h4 {{
         font-size: clamp(1.1rem, 2.5vw, 1.4rem) !important;
-    }
+    }}
 
     /* === BUTTONS === */
-    .stButton>button { 
-        background: linear-gradient(135deg, #0c1421 0%, #1e3a8a 100%) !important;
-        color: #c5a059 !important;
+    .stButton>button {{ 
+        background: linear-gradient(135deg, {theme['primary']} 0%, {theme['accent']} 100%) !important;
+        color: {card_bg} !important;
         font-weight: bold !important;
         width: 100% !important;
         padding: 14px 20px !important;
-        border: 2px solid #c5a059 !important;
+        border: 2px solid {theme['accent']} !important;
         border-radius: 8px !important;
         height: auto !important;
         min-height: 50px !important;
@@ -93,280 +163,449 @@ st.markdown("""
         cursor: pointer !important;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-    }
+    }}
     
-    .stButton>button:hover { 
+    .stButton>button:hover {{ 
         transform: translateY(-2px) !important;
         box-shadow: 0 8px 20px rgba(197,160,89,0.4) !important;
-        border-color: #d4af37 !important;
-        background: linear-gradient(135deg, #1e3a8a 0%, #0c1421 100%) !important;
-    }
+        border-color: {theme['accent2']} !important;
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['primary']} 100%) !important;
+    }}
     
-    .stButton>button:active {
+    .stButton>button:active {{
         transform: translateY(0) !important;
         box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-    }
+    }}
 
     /* === RESULT BOX === */
-    .result-box { 
-        background: linear-gradient(135deg, #ffffff 0%, #fefefe 100%) !important;
+    .result-box {{ 
+        background: {card_bg} !important;
         padding: 28px !important;
         border-radius: 14px !important;
-        border-left: 12px solid #c5a059 !important;
+        border-left: 12px solid {theme['accent']} !important;
         box-shadow: 0 10px 30px rgba(0,0,0,0.12) !important;
-        color: #1a1a1a !important;
+        color: {text_primary} !important;
         font-size: 17px;
         line-height: 1.8;
         margin-bottom: 20px;
         animation: fadeInUp 0.6s ease-out;
-    }
+    }}
     
-    @keyframes fadeInUp {
-        from {
+    @keyframes fadeInUp {{
+        from {{
             opacity: 0;
             transform: translateY(30px);
-        }
-        to {
+        }}
+        to {{
             opacity: 1;
             transform: translateY(0);
-        }
-    }
+        }}
+    }}
 
     /* === FORM INPUTS === */
     .stTextInput>div>div>input,
-    .stTextArea textarea {
-        background-color: #fdfaf1 !important;
-        color: #000000 !important;
-        border: 2px solid #c5a059 !important;
+    .stTextArea textarea {{
+        background-color: {bg_secondary} !important;
+        color: {text_primary} !important;
+        border: 2px solid {theme['accent']} !important;
         border-radius: 8px !important;
         padding: 12px !important;
         font-family: 'Courier New', monospace !important;
         transition: all 0.3s ease !important;
         font-size: 15px !important;
-    }
+    }}
     
     .stTextInput>div>div>input:focus,
-    .stTextArea textarea:focus {
-        border-color: #d4af37 !important;
+    .stTextArea textarea:focus {{
+        border-color: {theme['accent2']} !important;
         box-shadow: 0 0 0 3px rgba(197,160,89,0.2) !important;
         outline: none !important;
-    }
+    }}
 
     /* === CHAT BUBBLES === */
-    .chat-user {
-        background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
-        color: #000000 !important;
+    .chat-user {{
+        background: linear-gradient(135deg, {bg_secondary} 0%, {card_bg} 100%);
+        color: {text_primary} !important;
         padding: 16px 20px;
         border-radius: 18px 18px 4px 18px;
-        border-left: 5px solid #1e3a8a;
+        border-left: 5px solid {theme['primary']};
         margin-bottom: 12px;
         box-shadow: 0 3px 10px rgba(0,0,0,0.08);
         animation: slideInLeft 0.4s ease-out;
-    }
+    }}
     
-    .chat-ai {
-        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-        color: #1a1a1a !important;
+    .chat-ai {{
+        background: linear-gradient(135deg, {card_bg} 0%, {bg_secondary} 100%);
+        color: {text_primary} !important;
         padding: 16px 20px;
         border-radius: 18px 18px 18px 4px;
-        border-left: 5px solid #c5a059;
+        border-left: 5px solid {theme['accent']};
         margin-bottom: 16px;
-        box-shadow: 0 3px 12px rgba(212,175,55,0.15);
+        box-shadow: 0 3px 12px rgba(197,160,89,0.15);
         animation: slideInRight 0.4s ease-out;
-    }
+    }}
     
-    @keyframes slideInLeft {
-        from { opacity: 0; transform: translateX(-20px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
+    @keyframes slideInLeft {{
+        from {{ opacity: 0; transform: translateX(-20px); }}
+        to {{ opacity: 1; transform: translateX(0); }}
+    }}
     
-    @keyframes slideInRight {
-        from { opacity: 0; transform: translateX(20px); }
-        to { opacity: 1; transform: translateX(0); }
-    }
+    @keyframes slideInRight {{
+        from {{ opacity: 0; transform: translateX(20px); }}
+        to {{ opacity: 1; transform: translateX(0); }}
+    }}
 
     /* === SIDEBAR === */
-    section[data-testid='stSidebar'] {
-        background: linear-gradient(180deg, #0c1421 0%, #1a2332 100%) !important;
-        border-right: 3px solid #c5a059 !important;
-    }
+    section[data-testid='stSidebar'] {{
+        background: linear-gradient(180deg, {theme['primary']} 0%, #1a2332 100%) !important;
+        border-right: 3px solid {theme['accent']} !important;
+    }}
     
-    section[data-testid='stSidebar'] .stMarkdown {
+    section[data-testid='stSidebar'] .stMarkdown {{
         color: #fdfaf1 !important;
-    }
+    }}
     
-    section[data-testid='stSidebar'] [data-testid='stMetricValue'] {
-        color: #c5a059 !important;
+    section[data-testid='stSidebar'] [data-testid='stMetricValue'] {{
+        color: {theme['accent']} !important;
         font-size: 24px !important;
         font-weight: bold !important;
-    }
+    }}
 
     /* === IMAGE MAGNIFIER === */
-    .magnifier-container {
+    .magnifier-container {{
         overflow: hidden;
-        border: 3px solid #c5a059;
+        border: 3px solid {theme['accent']};
         border-radius: 12px;
         cursor: zoom-in;
         background: white;
         padding: 8px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
-    }
+        position: relative;
+    }}
     
-    .magnifier-container:hover {
+    .magnifier-container:hover {{
         box-shadow: 0 8px 25px rgba(197,160,89,0.3);
-        border-color: #d4af37;
-    }
+        border-color: {theme['accent2']};
+    }}
     
-    .magnifier-container img {
+    .magnifier-container img {{
         transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    }
+    }}
     
-    .magnifier-container img:hover {
-        transform: scale(1.8);
-    }
+    .magnifier-container img:hover {{
+        transform: scale(1.3);
+    }}
+
+    /* === ZOOM MODAL === */
+    .modal {{
+        display: none;
+        position: fixed;
+        z-index: 99999;
+        padding-top: 50px;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.95);
+        animation: fadeIn 0.3s;
+    }}
+    
+    .modal-content {{
+        margin: auto;
+        display: block;
+        width: 90%;
+        max-width: 1400px;
+        animation: zoomIn 0.3s;
+    }}
+    
+    @keyframes fadeIn {{
+        from {{ opacity: 0; }}
+        to {{ opacity: 1; }}
+    }}
+    
+    @keyframes zoomIn {{
+        from {{ transform: scale(0.7); opacity: 0; }}
+        to {{ transform: scale(1); opacity: 1; }}
+    }}
+    
+    .modal-close {{
+        position: absolute;
+        top: 20px;
+        right: 40px;
+        color: #f1f1f1;
+        font-size: 50px;
+        font-weight: bold;
+        transition: 0.3s;
+        cursor: pointer;
+        z-index: 100000;
+    }}
+    
+    .modal-close:hover,
+    .modal-close:focus {{
+        color: {theme['accent']};
+    }}
 
     /* === CITATION BOX === */
-    .citation-box {
+    .citation-box {{
         font-size: 13px;
-        color: #5d4037;
-        background: linear-gradient(135deg, #efebe9 0%, #f5f5f5 100%);
+        color: {text_secondary};
+        background: linear-gradient(135deg, {bg_secondary} 0%, {card_bg} 100%);
         padding: 14px 18px;
         border-radius: 10px;
-        border: 1px dashed #c5a059;
+        border: 1px dashed {theme['accent']};
         margin-top: 18px;
         font-style: italic;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
+    }}
 
     /* === FILE UPLOADER === */
-    [data-testid='stFileUploader'] {
-        background: white;
-        border: 3px dashed #c5a059;
+    [data-testid='stFileUploader'] {{
+        background: {card_bg};
+        border: 3px dashed {theme['accent']};
         border-radius: 12px;
         padding: 30px;
         text-align: center;
         transition: all 0.3s ease;
-    }
+    }}
     
-    [data-testid='stFileUploader']:hover {
-        border-color: #d4af37;
-        background: #fdfaf1;
+    [data-testid='stFileUploader']:hover {{
+        border-color: {theme['accent2']};
+        background: {bg_secondary};
         box-shadow: 0 5px 15px rgba(197,160,89,0.1);
-    }
+    }}
 
     /* === DIVIDER === */
-    hr {
+    hr {{
         border: none;
         height: 2px;
-        background: linear-gradient(90deg, transparent, #c5a059, transparent);
+        background: linear-gradient(90deg, transparent, {theme['accent']}, transparent);
         margin: 30px 0;
-    }
+    }}
 
     /* === EMPTY STATE === */
-    .empty-state {
+    .empty-state {{
         text-align: center;
         padding: 60px 20px;
-        background: white;
+        background: {card_bg};
         border-radius: 16px;
-        border: 3px dashed #c5a059;
+        border: 3px dashed {theme['accent']};
         margin: 40px 0;
         box-shadow: 0 5px 20px rgba(0,0,0,0.08);
-    }
+    }}
     
-    .empty-state h3 {
-        color: #0c1421;
+    .empty-state h3 {{
+        color: {theme['primary']};
         border: none;
         margin-bottom: 10px;
-    }
+    }}
 
     /* === LOGIN CARD === */
-    .login-card {
-        background: white;
+    .login-card {{
+        background: {card_bg};
         padding: 50px 40px;
         border-radius: 20px;
         box-shadow: 0 15px 50px rgba(0,0,0,0.15);
-        border: 2px solid #c5a059;
+        border: 2px solid {theme['accent']};
         animation: fadeInUp 0.6s ease-out;
-    }
+    }}
     
-    .hero-title {
+    .hero-title {{
         font-size: clamp(2rem, 5vw, 3rem);
-        color: #0c1421;
+        color: {theme['primary']};
         margin-bottom: 15px;
         font-weight: bold;
         text-align: center;
-    }
+    }}
     
-    .hero-subtitle {
+    .hero-subtitle {{
         font-size: clamp(1rem, 2vw, 1.2rem);
-        color: #5d4037;
+        color: {text_secondary};
         text-align: center;
         margin-bottom: 30px;
         line-height: 1.6;
-    }
+    }}
 
     /* === CREDIT PROGRESS BAR === */
-    .credit-bar-container {
+    .credit-bar-container {{
         background: rgba(255,255,255,0.1);
         border-radius: 10px;
         padding: 4px;
         margin: 15px 0;
-        border: 1px solid #c5a059;
-    }
+        border: 1px solid {theme['accent']};
+    }}
     
-    .credit-bar {
+    .credit-bar {{
         height: 10px;
-        background: linear-gradient(90deg, #c5a059, #d4af37);
+        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']});
         border-radius: 8px;
         transition: width 0.5s ease;
         box-shadow: 0 0 10px rgba(197,160,89,0.5);
-    }
+    }}
 
     /* === SECTION HEADER === */
-    .section-header {
-        color: #c5a059 !important;
+    .section-header {{
+        color: {theme['accent']} !important;
         font-size: 16px;
         font-weight: bold;
         margin-top: 20px;
         margin-bottom: 10px;
         padding-bottom: 8px;
         border-bottom: 2px solid rgba(197,160,89,0.3);
-    }
+    }}
+
+    /* === MOBILE NAV BUTTONS === */
+    .mobile-nav {{
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: {theme['primary']};
+        padding: 10px 20px;
+        border-radius: 50px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    }}
+    
+    .mobile-nav button {{
+        background: {theme['accent']};
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        margin: 0 5px;
+        border-radius: 20px;
+        font-size: 18px;
+        cursor: pointer;
+    }}
 
     /* === RESPONSIVE === */
-    @media (max-width: 768px) {
-        .main {
+    @media (max-width: 768px) {{
+        .main {{
             padding: 1rem 0.5rem;
-        }
+        }}
         
-        h1 {
+        h1 {{
             font-size: 1.5rem !important;
-        }
+        }}
         
-        .result-box {
+        .result-box {{
             padding: 20px !important;
             font-size: 15px !important;
-        }
+        }}
         
-        .stButton>button {
+        .stButton>button {{
             font-size: 14px !important;
             padding: 12px 16px !important;
-        }
+        }}
         
-        .login-card {
+        .login-card {{
             padding: 30px 20px;
-        }
-    }
+        }}
+        
+        .mobile-nav {{
+            display: block;
+        }}
+    }}
     </style>
+
+    <script>
+    // === KEYBOARD SHORTCUTS ===
+    document.addEventListener('keydown', function(e) {{
+        // Esc - Close modal
+        if (e.key === 'Escape') {{
+            const modal = document.getElementById('imageModal');
+            if (modal) modal.style.display = 'none';
+        }}
+        
+        // Ctrl+Enter - Trigger analysis
+        if (e.ctrlKey && e.key === 'Enter') {{
+            e.preventDefault();
+            const analysisBtn = Array.from(document.querySelectorAll('.stButton button'))
+                .find(btn => btn.textContent.includes('AKADEMIK TAHLILNI BOSHLASH'));
+            if (analysisBtn) analysisBtn.click();
+        }}
+        
+        // Ctrl+S - Trigger download
+        if (e.ctrlKey && e.key === 's') {{
+            e.preventDefault();
+            const downloadBtn = document.querySelector('[data-testid="stDownloadButton"]');
+            if (downloadBtn) downloadBtn.click();
+        }}
+    }});
+
+    // === IMAGE MODAL ===
+    function setupModal() {{
+        const images = document.querySelectorAll('.magnifier-container img');
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        const closeBtn = document.querySelector('.modal-close');
+        
+        images.forEach(img => {{
+            img.onclick = function() {{
+                if (modal && modalImg) {{
+                    modal.style.display = "block";
+                    modalImg.src = this.src;
+                }}
+            }}
+        }});
+        
+        if (closeBtn) {{
+            closeBtn.onclick = function() {{
+                modal.style.display = "none";
+            }}
+        }}
+        
+        if (modal) {{
+            modal.onclick = function(e) {{
+                if (e.target === modal) {{
+                    modal.style.display = "none";
+                }}
+            }}
+        }}
+    }}
+
+    // === MOBILE SWIPE GESTURES ===
+    let touchstartX = 0;
+    let touchendX = 0;
+    
+    document.addEventListener('touchstart', e => {{
+        touchstartX = e.changedTouches[0].screenX;
+    }});
+    
+    document.addEventListener('touchend', e => {{
+        touchendX = e.changedTouches[0].screenX;
+        handleSwipe();
+    }});
+    
+    function handleSwipe() {{
+        const threshold = 100;
+        if (touchendX < touchstartX - threshold) {{
+            // Swipe left - next page
+            const nextBtn = document.getElementById('mobileNext');
+            if (nextBtn) nextBtn.click();
+        }}
+        if (touchendX > touchstartX + threshold) {{
+            // Swipe right - previous page
+            const prevBtn = document.getElementById('mobilePrev');
+            if (prevBtn) prevBtn.click();
+        }}
+    }}
+
+    // Run after Streamlit renders
+    setTimeout(setupModal, 1000);
+    setInterval(setupModal, 2000); // Refresh for dynamic content
+    </script>
+
+    <!-- Modal HTML -->
+    <div id="imageModal" class="modal">
+        <span class="modal-close">&times;</span>
+        <img class="modal-content" id="modalImage">
+    </div>
 """, unsafe_allow_html=True)
 
 # --- 2. CORE SERVICES (SUPABASE & AI) ---
-if "auth" not in st.session_state:
-    st.session_state.auth = False
-if "u_email" not in st.session_state:
-    st.session_state.u_email = ""
-
 try:
     db = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
@@ -380,7 +619,7 @@ if not st.session_state.auth:
     st.markdown("<br>", unsafe_allow_html=True)
     _, col_mid, _ = st.columns([1, 2, 1])
     with col_mid:
-        st.markdown("""
+        st.markdown(f"""
             <div class='login-card'>
                 <div class='hero-title'>🏛 Manuscript AI</div>
                 <div class='hero-subtitle'>
@@ -401,7 +640,7 @@ if not st.session_state.auth:
             if pwd_in == CORRECT_PASSWORD:
                 st.session_state.auth = True
                 st.session_state.u_email = email_in
-                st.success("✅ Muvaffaqiyatli kirdingiz!")
+                st.toast("✅ Muvaffaqiyatli kirdingiz!", icon="🎉")
                 st.rerun()
             else:
                 st.error("❌ Parol noto'g'ri! Iltimos, qaytadan urinib ko'ring.")
@@ -468,7 +707,7 @@ def render_page(file_content, page_idx, scale, is_pdf):
 # 4. TADQIQOT INTERFEYSI
 # ==========================================
 with st.sidebar:
-    st.markdown("<h2 style='color:#c5a059; text-align:center; border:none;'>📜 Manuscript AI</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='color:{theme['accent']}; text-align:center; border:none;'>📜 Manuscript AI</h2>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align:center; color:#fdfaf1; font-size:14px;'>👤 <b>{st.session_state.u_email}</b></p>", unsafe_allow_html=True)
     
     current_credits = fetch_live_credits(st.session_state.u_email)
@@ -484,42 +723,85 @@ with st.sidebar:
     
     st.divider()
     
+    # === DARK MODE TOGGLE ===
+    st.markdown("<p class='section-header'>🎨 Dizayn Sozlamalari</p>", unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.write("🌙 Tungi Rejim" if not st.session_state.dark_mode else "☀️ Kunduzgi Rejim")
+    with col2:
+        if st.button("🔄", key="dark_toggle"):
+            st.session_state.dark_mode = not st.session_state.dark_mode
+            st.rerun()
+    
+    # === COLOR THEME SELECTOR ===
+    new_theme = st.selectbox("Rang Sxemasi", list(THEMES.keys()), key="theme_select")
+    if new_theme != st.session_state.theme:
+        st.session_state.theme = new_theme
+        st.rerun()
+    
+    st.divider()
+    
     # Section: Til va Xat
-    st.markdown("<p class='section-header'>🌍 Til va Xat Tanlash</p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='section-header'>🌍 Til va Xat Tanlash</p>", unsafe_allow_html=True)
     lang = st.selectbox("Qo'lyozma tili", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
     era = st.selectbox("Xat turi", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     
     st.divider()
     
     # Section: Rasm Sozlamalari
-    st.markdown("<p class='section-header'>🎨 Rasm Sozlamalari</p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='section-header'>🎨 Rasm Sozlamalari</p>", unsafe_allow_html=True)
     br = st.slider("☀️ Yorqinlik", 0.5, 2.0, 1.0, 0.1)
     ct = st.slider("🎭 Kontrast", 0.5, 3.0, 1.3, 0.1)
     rot = st.select_slider("🔄 Aylantirish", options=[0, 90, 180, 270], value=0)
 
     st.divider()
     
+    # === COMPARE MODE ===
+    st.markdown(f"<p class='section-header'>🔄 Maxsus Rejimlar</p>", unsafe_allow_html=True)
+    st.session_state.compare_mode = st.checkbox("🔄 Solishtirish Rejimi", value=st.session_state.compare_mode)
+    
+    st.divider()
+    
+    # === HISTORY SIDEBAR ===
+    if st.session_state.history:
+        with st.expander("📜 Tarix (Oxirgi 10 ta)"):
+            for h in st.session_state.history[-10:][::-1]:
+                if st.button(f"{h['date']} - {h['filename'][:25]}...", key=f"hist_{h['id']}"):
+                    st.session_state.results = h['results']
+                    st.session_state.chats = h.get('chats', {})
+                    st.toast(f"✅ {h['filename']} yuklandi!", icon="📂")
+                    st.rerun()
+    
+    st.divider()
+    
+    # KEYBOARD SHORTCUTS INFO
+    with st.expander("⌨️ Klaviatura Yorliqlari"):
+        st.markdown("""
+            - **Esc** - Modal yopish
+            - **Ctrl+Enter** - Tahlilni boshlash
+            - **Ctrl+S** - Faylni saqlash
+        """)
+    
+    st.divider()
+    
     if st.button("🚪 TIZIMDAN CHIQISH"):
         st.session_state.auth = False
+        st.toast("👋 Xayr!", icon="👋")
         st.rerun()
 
 # === MAIN CONTENT AREA ===
 st.markdown("<h1>📜 Raqamli Qo'lyozmalar Ekspertizasi</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center; color:#5d4037; font-size:18px; margin-bottom:30px;'>Sun'iy intellekt yordamida qadimiy matnlarni tahlil qiling va transliteratsiya qiling</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center; color:{text_secondary}; font-size:18px; margin-bottom:30px;'>Sun'iy intellekt yordamida qadimiy matnlarni tahlil qiling va transliteratsiya qiling</p>", unsafe_allow_html=True)
 
 file = st.file_uploader("📤 Qo'lyozma faylini yuklang", type=["pdf", "png", "jpg", "jpeg"], label_visibility="visible")
 
-if "imgs" not in st.session_state: st.session_state.imgs = []
-if "results" not in st.session_state: st.session_state.results = {}
-if "chats" not in st.session_state: st.session_state.chats = {}
-
 if not file:
     # === EMPTY STATE ===
-    st.markdown("""
+    st.markdown(f"""
         <div class='empty-state'>
             <h3 style='font-size:3rem; margin-bottom:20px;'>📜</h3>
             <h3>Qo'lyozma yuklang</h3>
-            <p style='color:#666; font-size:16px; line-height:1.6;'>
+            <p style='color:{text_secondary}; font-size:16px; line-height:1.6;'>
                 PDF, PNG, JPG yoki JPEG formatidagi fayllarni yuklashingiz mumkin<br>
                 Maksimal 15 sahifagacha tahlil qilish imkoniyati
             </p>
@@ -544,6 +826,7 @@ if file:
             st.session_state.last_fn = file.name
             st.session_state.results, st.session_state.chats = {}, {}
             gc.collect()
+            st.toast("✅ Fayl yuklandi!", icon="📁")
 
     processed = []
     for im in st.session_state.imgs:
@@ -562,19 +845,39 @@ if file:
 
     if not st.session_state.results and indices:
         st.markdown("<h3 style='margin-top:30px;'>🖼 Tanlangan Varaqlar</h3>", unsafe_allow_html=True)
-        cols = st.columns(min(len(indices), 3))
-        for i, idx in enumerate(indices):
-            with cols[i % 3]:
+        
+        # === COMPARE MODE ===
+        if st.session_state.compare_mode and len(indices) >= 2:
+            st.info("🔄 Solishtirish rejimi: Birinchi 2 ta varaq yonma-yon")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"<h4>📄 Varaq {indices[0]+1}</h4>", unsafe_allow_html=True)
                 st.markdown('<div class="magnifier-container">', unsafe_allow_html=True)
-                st.image(processed[idx], caption=f"Varaq {idx+1}", use_container_width=True)
+                st.image(processed[indices[0]], use_container_width=True)
                 st.markdown("</div>", unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"<h4>📄 Varaq {indices[1]+1}</h4>", unsafe_allow_html=True)
+                st.markdown('<div class="magnifier-container">', unsafe_allow_html=True)
+                st.image(processed[indices[1]], use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            cols = st.columns(min(len(indices), 3))
+            for i, idx in enumerate(indices):
+                with cols[i % 3]:
+                    st.markdown('<div class="magnifier-container">', unsafe_allow_html=True)
+                    st.image(processed[idx], caption=f"Varaq {idx+1}", use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
     if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
         if current_credits >= len(indices):
             prompt = f"Academic analysis of {lang} manuscript ({era}). 1.Transliteration 2.Translation 3.Expert Notes."
-            for idx in indices:
+            
+            # === PROGRESS TRACKER ===
+            progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
+            
+            for i, idx in enumerate(indices):
                 with st.status(f"🔍 Varaq {idx+1} ekspertizadan o'tkazilmoqda..."):
                     try:
                         ai_img = enhance_image_for_ai(processed[idx])
@@ -583,11 +886,32 @@ if file:
                         if resp.candidates and resp.candidates[0].content.parts:
                             st.session_state.results[idx] = resp.text
                             use_credit_atomic(st.session_state.u_email)
+                            st.toast(f"✅ Varaq {idx+1} tayyor!", icon="🎉")
                             st.success(f"✅ Varaq {idx+1} muvaffaqiyatli tahlil qilindi")
                         else:
                             st.error("⚠️ AI javob berish imkoniyatiga ega emas")
                     except Exception as e:
                         st.error(f"❌ Xatolik yuz berdi: {e}")
+                
+                # Update progress
+                progress_bar.progress((i+1)/len(indices), text=f"📊 {i+1}/{len(indices)} varaq tahlil qilindi")
+            
+            # Save to history
+            st.session_state.history.append({
+                'id': datetime.now().timestamp(),
+                'date': datetime.now().strftime("%d.%m.%Y %H:%M"),
+                'filename': file.name,
+                'results': st.session_state.results.copy(),
+                'chats': st.session_state.chats.copy()
+            })
+            
+            # Keep only last 10
+            if len(st.session_state.history) > 10:
+                st.session_state.history = st.session_state.history[-10:]
+            
+            progress_bar.empty()
+            st.balloons()
+            st.toast("🎉 Barcha varaqlar tahlil qilindi!", icon="✨")
             st.rerun()
         else:
             st.warning(f"⚠️ Kredit yetarli emas! Sizda {current_credits} sahifa kredit bor, {len(indices)} sahifa tahlil qilish uchun yetarli emas.")
@@ -596,10 +920,32 @@ if file:
         st.divider()
         st.markdown("<h2>📊 Tahlil Natijalari</h2>", unsafe_allow_html=True)
         
+        # === EXPORT FORMAT SELECTOR ===
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"<p style='font-size:16px; color:{text_secondary};'>Natijalarni yuklab oling:</p>", unsafe_allow_html=True)
+        with col2:
+            export_format = st.selectbox("📥 Format", ["DOCX", "TXT", "JSON"], label_visibility="collapsed")
+        
         final_text = ""
         today = datetime.now().strftime("%d.%m.%Y")
+        
+        # Mobile navigation buttons
+        result_indices = sorted(st.session_state.results.keys())
+        if len(result_indices) > 1:
+            nav_col1, nav_col2, nav_col3 = st.columns([1, 2, 1])
+            with nav_col1:
+                if st.button("⬅️ Oldingi", key="mobilePrev", use_container_width=True):
+                    if st.session_state.current_page_index > 0:
+                        st.session_state.current_page_index -= 1
+                        st.rerun()
+            with nav_col3:
+                if st.button("Keyingi ➡️", key="mobileNext", use_container_width=True):
+                    if st.session_state.current_page_index < len(result_indices) - 1:
+                        st.session_state.current_page_index += 1
+                        st.rerun()
 
-        for idx in sorted(st.session_state.results.keys()):
+        for idx in result_indices:
             st.markdown(f"<h4 style='margin-top:40px;'>📖 Varaq {idx+1} - Tahlil</h4>", unsafe_allow_html=True)
             c1, c2 = st.columns([1, 1.3])
 
@@ -613,7 +959,7 @@ if file:
                 cite = f"Iqtibos: Manuscript AI (2026). Varaq {idx+1} tahlili ({lang}). Ekspert: d87809889-dot. Sana: {today}."
                 st.markdown(f"<div class='citation-box'>📌 {cite}</div>", unsafe_allow_html=True)
 
-                st.markdown(f"<p style='color:#5d4037; font-weight:bold; margin-top:20px; margin-bottom:8px;'>✏️ Tahrirlash:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color:{text_secondary}; font-weight:bold; margin-top:20px; margin-bottom:8px;'>✏️ Tahrirlash:</p>", unsafe_allow_html=True)
                 st.session_state.results[idx] = st.text_area(
                     f"Natijani tahrirlash",
                     value=st.session_state.results[idx],
@@ -625,7 +971,7 @@ if file:
                 final_text += f"\n\n--- PAGE {idx+1} ---\n{st.session_state.results[idx]}\n\n{cite}"
 
                 # === CHAT INTERFACE ===
-                st.markdown(f"<p style='color:#5d4037; font-weight:bold; margin-top:25px; margin-bottom:12px;'>💬 Savollar va Javoblar:</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color:{text_secondary}; font-weight:bold; margin-top:25px; margin-bottom:12px;'>💬 Savollar va Javoblar:</p>", unsafe_allow_html=True)
                 
                 st.session_state.chats.setdefault(idx, [])
                 for ch in st.session_state.chats[idx]:
@@ -641,22 +987,53 @@ if file:
                                 img_to_png_payload(processed[idx])
                             ])
                             st.session_state.chats[idx].append({"q": q, "a": chat_res.text})
+                            st.toast("✅ Javob olindi!", icon="💬")
                             st.rerun()
                     else:
                         st.warning("⚠️ Iltimos, avval savol yozing!")
 
         if final_text:
             st.divider()
-            doc = Document()
-            doc.add_paragraph(final_text)
-            bio = io.BytesIO()
-            doc.save(bio)
-
-            st.download_button(
-                "📥 WORD FORMATDA YUKLAB OLISH",
-                bio.getvalue(),
-                "manuscript_ai_report.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+            
+            # === EXPORT BASED ON FORMAT ===
+            if export_format == "DOCX":
+                doc = Document()
+                doc.add_paragraph(final_text)
+                bio = io.BytesIO()
+                doc.save(bio)
+                st.download_button(
+                    "📥 WORD FORMATDA YUKLAB OLISH",
+                    bio.getvalue(),
+                    "manuscript_ai_report.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    on_click=lambda: st.toast("✅ DOCX yuklab olindi!", icon="📥")
+                )
+            elif export_format == "TXT":
+                st.download_button(
+                    "📥 TEXT FORMATDA YUKLAB OLISH",
+                    final_text,
+                    "manuscript_ai_report.txt",
+                    mime="text/plain",
+                    on_click=lambda: st.toast("✅ TXT yuklab olindi!", icon="📥")
+                )
+            elif export_format == "JSON":
+                json_data = json.dumps({
+                    "metadata": {
+                        "date": today,
+                        "language": lang,
+                        "script": era,
+                        "filename": file.name,
+                        "user": st.session_state.u_email
+                    },
+                    "results": st.session_state.results,
+                    "chats": st.session_state.chats
+                }, ensure_ascii=False, indent=2)
+                st.download_button(
+                    "📥 JSON FORMATDA YUKLAB OLISH",
+                    json_data,
+                    "manuscript_ai_report.json",
+                    mime="application/json",
+                    on_click=lambda: st.toast("✅ JSON yuklab olindi!", icon="📥")
+                )
 
 gc.collect()
