@@ -626,7 +626,7 @@ if not st.session_state.auth:
                 <div class='hero-title'>🏛 Manuscript AI</div>
                 <div class='hero-subtitle'>
                     Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya 
-                    qilish uchun sun'iy intellekt asosidagi  platforma
+                    qilish uchun sun'iy intellekt asosidagi akademik platforma
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -650,7 +650,7 @@ if not st.session_state.auth:
 
 # --- AI ENGINE (UNCHANGED - DO NOT MODIFY) ---
 genai.configure(api_key=GEMINI_KEY)
-system_instruction = "Siz Manuscript AI mutaxassisiz. Tadqiqotchi Dostonbek muallifligida ilmiy tahlillar qilasiz."
+system_instruction = "Siz Manuscript AI mutaxassisiz. Tadqiqotchi d87809889-dot muallifligida ilmiy tahlillar qilasiz."
 safety_settings = {
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -670,8 +670,8 @@ def enhance_image_for_ai(img: Image.Image):
     """Rasmni AI tahlili uchun optimallashtirish (XATO TUZATILDI)"""
     img = ImageOps.grayscale(img)
     img = ImageOps.autocontrast(img, cutoff=1)
-    img = ImageEnhance.Contrast(img).enhance(1.9)
-    img = ImageEnhance.Sharpness(img).enhance(1.6)
+    img = ImageEnhance.Contrast(img).enhance(2.8)
+    img = ImageEnhance.Sharpness(img).enhance(2.5)
     return img
 
 def img_to_png_payload(img: Image.Image):
@@ -731,7 +731,7 @@ def render_landing_page():
             </h1>
             <p style='font-size:clamp(1.2rem, 3vw, 1.8rem); color:{text_secondary}; margin-bottom:30px; line-height:1.6;'>
                 Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya qilish uchun<br>
-                sun'iy intellekt asosidagi platforma
+                sun'iy intellekt asosidagi akademik platforma
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -745,7 +745,7 @@ def render_landing_page():
                 st.session_state.show_landing = False
                 st.rerun()
         with col_learn:
-            if st.button("📖 Tahlilni boshlaymizmi?", key="learn_more_btn", use_container_width=True):
+            if st.button("📖 Batafsil Ma'lumot", key="learn_more_btn", use_container_width=True):
                 st.session_state.show_landing = False
                 st.rerun()
     
@@ -764,20 +764,20 @@ def render_landing_page():
                 </h2>
                 <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
                     <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>10.000+</span><br>
-                        <span style='color:{text_secondary};'>arxivdagi qo'lyozmalar</span>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>100M+</span><br>
+                        <span style='color:{text_secondary};'>qo'lyozmalar arxivda</span>
                     </li>
                     <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>80%</span><br>
-                        <span style='color:{text_secondary};'>tarjima qilinmagan</span>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>99%</span><br>
+                        <span style='color:{text_secondary};'>raqamli emas</span>
                     </li>
                     <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>$100-300</span><br>
-                        <span style='color:{text_secondary};'>kitob tarjimasi uchun xarajat</span>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>$500-1000</span><br>
+                        <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
                     </li>
                     <li style='margin-bottom:15px;'>
                         <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>2-3 hafta</span><br>
-                        <span style='color:{text_secondary};'>o'rtacha tahlil vaqti</span>
+                        <span style='color:{text_secondary};'>manual tahlil vaqti</span>
                     </li>
                 </ul>
             </div>
@@ -793,19 +793,19 @@ def render_landing_page():
                 </h2>
                 <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
                     <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>AI-tahlili</span><br>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>AI-powered</span><br>
                         <span style='color:{text_secondary};'>OCR va tahlil</span>
                     </li>
                     <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>2 soniya</span><br>
-                        <span style='color:{text_secondary};'>tahlil vaqti har sahifa uchun</span>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>2 daqiqa</span><br>
+                        <span style='color:{text_secondary};'>tahlil vaqti</span>
                     </li>
                     <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>90-95%</span><br>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>95%</span><br>
                         <span style='color:{text_secondary};'>aniqlik darajasi</span>
                     </li>
                     <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>$0.3-0.04</span><br>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>$5-10</span><br>
                         <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
                     </li>
                 </ul>
@@ -823,19 +823,19 @@ def render_landing_page():
                 <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
                     <li style='margin-bottom:15px;'>
                         <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_MANUSCRIPTS_ANALYZED:,}</span><br>
-                        <span style='color:{text_secondary};'>tahlil qilish rejalashtirilgan</span>
+                        <span style='color:{text_secondary};'>tahlil qilingan</span>
                     </li>
                     <li style='margin-bottom:15px;'>
                         <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_LANGUAGES_SUPPORTED}</span><br>
-                        <span style='color:{text_secondary};'>til qo'llab-quvvatlanadi</span>
+                        <span style='color:{text_secondary};'>til qo'llab-quvvatlash</span>
                     </li>
                     <li style='margin-bottom:15px;'>
                         <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_COUNTRIES}</span><br>
-                        <span style='color:{text_secondary};'>mamlakat bozoriga kirish rejalashtirilgan</span>
+                        <span style='color:{text_secondary};'>mamlakatda foydalanilmoqda</span>
                     </li>
                     <li style='margin-bottom:15px;'>
                         <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_ACTIVE_USERS:,}</span><br>
-                        <span style='color:{text_secondary};'>dastlabki rejalashtirilgan foydalanuvchilar soni</span>
+                        <span style='color:{text_secondary};'>faol foydalanuvchi</span>
                     </li>
                 </ul>
             </div>
@@ -865,7 +865,7 @@ def render_landing_page():
         <div style='text-align:center; margin-top:60px; padding:30px; background:{bg_secondary}; border-radius:10px;'>
             <p style='color:{text_secondary}; font-size:0.9rem; margin:0;'>
                 📊 Ko'rsatilgan statistik ma'lumotlar demo maqsadida keltirilgan<br>
-                🔬 Tadqiqot: d87809889@gmail.com | 📧 Aloqa uchun: {st.+99893-874-50-02}
+                🔬 Tadqiqot: d87809889-dot | 📧 Aloqa uchun: {st.session_state.u_email}
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -909,8 +909,8 @@ with st.sidebar:
     st.divider()
     
     # Section: Til va Xat
-    st.markdown(f"<p class='section-header'>Til va Xat Tanlash</p>", unsafe_allow_html=True)
-    lang = st.selectbox("Qo'lyozma tili", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy", "Noma'lum])
+    st.markdown(f"<p class='section-header'>🌍 Til va Xat Tanlash</p>", unsafe_allow_html=True)
+    lang = st.selectbox("Qo'lyozma tili", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
     era = st.selectbox("Xat turi", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
     
     st.divider()
@@ -924,8 +924,8 @@ with st.sidebar:
     st.divider()
     
     # === COMPARE MODE ===
-    st.markdown(f"<p class='section-header'>Maxsus Rejimlar</p>", unsafe_allow_html=True)
-    st.session_state.compare_mode = st.checkbox("Solishtirish Rejimi", value=st.session_state.compare_mode)
+    st.markdown(f"<p class='section-header'>🔄 Maxsus Rejimlar</p>", unsafe_allow_html=True)
+    st.session_state.compare_mode = st.checkbox("🔄 Solishtirish Rejimi", value=st.session_state.compare_mode)
     
     st.divider()
     
@@ -958,7 +958,7 @@ with st.sidebar:
     
     # Back to Landing button
     if not st.session_state.show_landing:
-        if st.button("Bosh Sahifaga Qaytish", key="back_to_landing"):
+        if st.button("🏠 Bosh Sahifaga Qaytish", key="back_to_landing"):
             st.session_state.show_landing = True
             st.rerun()
 
@@ -971,7 +971,7 @@ if st.session_state.show_landing:
 st.markdown("<h1>📜 Raqamli Qo'lyozmalar Ekspertizasi</h1>", unsafe_allow_html=True)
 st.markdown(f"<p style='text-align:center; color:{text_secondary}; font-size:18px; margin-bottom:30px;'>Sun'iy intellekt yordamida qadimiy matnlarni tahlil qiling va transliteratsiya qiling</p>", unsafe_allow_html=True)
 
-file = st.file_uploader(" Qo'lyozma faylini yuklang", type=["pdf", "png", "jpg", "jpeg"], label_visibility="visible")
+file = st.file_uploader("📤 Qo'lyozma faylini yuklang", type=["pdf", "png", "jpg", "jpeg"], label_visibility="visible")
 
 if not file:
     # === EMPTY STATE ===
@@ -981,7 +981,7 @@ if not file:
             <h3>Qo'lyozma yuklang</h3>
             <p style='color:{text_secondary}; font-size:16px; line-height:1.6;'>
                 PDF, PNG, JPG yoki JPEG formatidagi fayllarni yuklashingiz mumkin<br>
-                 Bir urinishda maksimal  sahifagacha tahlil qilish imkoniyati
+                Maksimal 15 sahifagacha tahlil qilish imkoniyati
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -1004,7 +1004,7 @@ if file:
             st.session_state.last_fn = file.name
             st.session_state.results, st.session_state.chats = {}, {}
             gc.collect()
-            st.toast("✅ Fayl yuklandi!",)
+            st.toast("✅ Fayl yuklandi!", icon="📁")
 
     processed = []
     for im in st.session_state.imgs:
@@ -1026,7 +1026,7 @@ if file:
         
         # === COMPARE MODE ===
         if st.session_state.compare_mode and len(indices) >= 2:
-            st.info("Solishtirish rejimi: Birinchi 2 ta varaq yonma-yon")
+            st.info("🔄 Solishtirish rejimi: Birinchi 2 ta varaq yonma-yon")
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown(f"<h4>📄 Varaq {indices[0]+1}</h4>", unsafe_allow_html=True)
@@ -1048,46 +1048,9 @@ if file:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    if st.button("✨TAHLILNI BOSHLASH"):
-      if len(indices) == 1:
-    prompt = f"""You are a professional paleographer specializing in {lang} manuscripts.
-
-Supported languages: Chagatai (Chagatai Turkic), Persian (Farsi), Arabic, Old Turkic.
-Script style: {era} (Nastaʿlīq / Thuluth / Ruqʿah / Kufic).
-
-CRITICAL TASK: Transcribe this {era} script with ZERO omissions.
-
-MANDATORY RULES:
-1. Read EVERY character — even if unclear, mark as [?] but NEVER skip
-2. Pay extra attention to: faded areas, overlapping letters, edges
-3. If damaged, note it but still attempt to read: [...damaged: possible "word"...]
-4. Double-check line count matches the image
-
-OUTPUT:
-1. **Transliteration**: [Full Latin transcription]
-2. **Translation**: [Modern {lang} / English]
-3. **Notes**: [Condition, script observations]
-
-REMINDER: Accuracy is priority. Take your time."""
-
-elif len(indices) <= 5:
-    prompt = f"""Expert paleographer analyzing {lang} manuscript ({era} script).
-
-RULES:
-- Read EVERY character (mark unclear as [?], damaged as [...])
-- No skipping words or lines
-- Check faded/damaged areas
-
-OUTPUT:
-1. Transliteration
-2. Translation
-3. Brief notes"""
-
-else:
-    prompt = f"""Paleographer: Transcribe {lang} {era} manuscript accurately.
-Rules: Read all text (unclear=[?]), no skips.
-Output: 1.Transliteration 2.Translation 3.Notes"""
-
+    if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
+        if current_credits >= len(indices):
+            prompt = f"Academic analysis of {lang} manuscript ({era}). 1.Transliteration 2.Translation 3.Expert Notes."
             
             # === PROGRESS TRACKER ===
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
@@ -1126,7 +1089,7 @@ Output: 1.Transliteration 2.Translation 3.Notes"""
             
             progress_bar.empty()
             st.balloons()
-            st.toast("Barcha varaqlar tahlil qilindi!", icon="✨")
+            st.toast("🎉 Barcha varaqlar tahlil qilindi!", icon="✨")
             st.rerun()
         else:
             st.warning(f"⚠️ Kredit yetarli emas! Sizda {current_credits} sahifa kredit bor, {len(indices)} sahifa tahlil qilish uchun yetarli emas.")
@@ -1252,5 +1215,3 @@ Output: 1.Transliteration 2.Translation 3.Notes"""
                 )
 
 gc.collect()
-
-
