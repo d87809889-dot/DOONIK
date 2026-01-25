@@ -626,7 +626,7 @@ if not st.session_state.auth:
                 <div class='hero-title'>🏛 Manuscript AI</div>
                 <div class='hero-subtitle'>
                     Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya 
-                    qilish uchun sun'iy intellekt asosidagi akademik platforma
+                    qilish uchun sun'iy intellekt asosidagi platforma
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -1215,3 +1215,4 @@ if file:
                 )
 
 gc.collect()
+
