@@ -709,11 +709,11 @@ def render_page(file_content, page_idx, scale, is_pdf):
 # UI CONSTANTS (DEMO METRICS - NOT LIVE DATA)
 # ==========================================
 # NOTE: These are placeholder values for demo purposes
-DEMO_MANUSCRIPTS_ANALYZED = 10247
+DEMO_MANUSCRIPTS_ANALYZING = 10247
 DEMO_LANGUAGES_SUPPORTED = 45
 DEMO_AVG_TIME_MINUTES = 2.3
 DEMO_ACCURACY_RATE = 94.7
-DEMO_ACTIVE_USERS = 1234
+DEMO_ACTIVE_USERS = 10000
 DEMO_COUNTRIES = 12
 
 # ==========================================
@@ -731,7 +731,7 @@ def render_landing_page():
             </h1>
             <p style='font-size:clamp(1.2rem, 3vw, 1.8rem); color:{text_secondary}; margin-bottom:30px; line-height:1.6;'>
                 Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya qilish uchun<br>
-                sun'iy intellekt asosidagi akademik platforma
+                sun'iy intellekt asosidagi  platforma
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -1215,4 +1215,5 @@ if file:
                 )
 
 gc.collect()
+
 
