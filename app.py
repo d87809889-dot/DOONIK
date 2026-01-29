@@ -582,39 +582,49 @@ def openrouter_text_generate(prompt: str, *, max_retries: int = 3) -> str:
     raise RuntimeError("OpenRouter: retries exhausted")
 
 def text_generate(prompt: str) -> str:
-    """Default: Cloudflare. Fallback: OpenRouter (if key) else Gemini."""
+    """Default: Cloudflare. Optional backup: OpenRouter (if key). Last resort: Gemini.
+
+    NOTE: This function ONLY routes *text* tasks. Manuscript/image analysis still uses Gemini.
+    """
     provider = (DEFAULT_TEXT_PROVIDER or "cloudflare").lower()
 
-    # 1) Try primary
+    # 1) Try primary provider
     try:
         if provider == "cloudflare":
-            _set_last_provider('cloudflare')
-        return cloudflare_text_generate(prompt)
+            _set_last_provider("cloudflare")
+            return cloudflare_text_generate(prompt)
         if provider == "openrouter":
-            _set_last_provider('openrouter')
-        return openrouter_text_generate(prompt)
+            _set_last_provider("openrouter")
+            return openrouter_text_generate(prompt)
         if provider == "gemini":
-            _set_last_provider('gemini')
-    return gemini_text_generate(prompt)
+            _set_last_provider("gemini")
+            return gemini_text_generate(prompt)
+
+        # Unknown provider -> default to Cloudflare
+        _set_last_provider("cloudflare")
+        return cloudflare_text_generate(prompt)
+
     except Exception:
+        # Continue to fallback chain
         pass
 
-    # 2) Fallback chain
+    # 2) Fallback chain (best-effort)
     if provider != "cloudflare":
         try:
-            _set_last_provider('cloudflare')
-        return cloudflare_text_generate(prompt)
-        except Exception:
-            pass
-    if OPENROUTER_API_KEY and provider != "openrouter":
-        try:
-            _set_last_provider('openrouter')
-        return openrouter_text_generate(prompt)
+            _set_last_provider("cloudflare")
+            return cloudflare_text_generate(prompt)
         except Exception:
             pass
 
-    # Last resort: Gemini (same fixed model name)
-    _set_last_provider('gemini')
+    if OPENROUTER_API_KEY and provider != "openrouter":
+        try:
+            _set_last_provider("openrouter")
+            return openrouter_text_generate(prompt)
+        except Exception:
+            pass
+
+    # Last resort: Gemini (fixed model name)
+    _set_last_provider("gemini")
     return gemini_text_generate(prompt)
 
 
