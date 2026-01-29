@@ -5,9 +5,14 @@ import streamlit as st
 import google.generativeai as genai
 import pypdfium2 as pdfium
 import io, re, json, gc, base64
+import time, random
+import requests
 from datetime import datetime
 from supabase import create_client
-from docx import Document
+try:
+    from docx import Document
+except Exception:
+    Document = None
 
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
@@ -29,6 +34,12 @@ try:
     db = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     CORRECT_PASSWORD = st.secrets.get("APP_PASSWORD", "")
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
+    # Optional text providers (for demo, to reduce Gemini calls)
+    CF_ACCOUNT_ID = st.secrets.get("CF_ACCOUNT_ID", "")
+    CF_API_TOKEN = st.secrets.get("CF_API_TOKEN", "")
+    CF_TEXT_MODEL = st.secrets.get("CF_TEXT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
+    DEFAULT_TEXT_PROVIDER = st.secrets.get("DEFAULT_TEXT_PROVIDER", "cloudflare").lower()
+    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
 except Exception:
     st.error("Secrets sozlanmagan! (SUPABASE_URL/SUPABASE_KEY/GEMINI_API_KEY)")
     st.stop()
@@ -382,6 +393,181 @@ def gemini_text_generate(prompt: str):
 
 
 # =========================
+# TEXT PROVIDERS (Cloudflare Workers AI default; Gemini stays as backup)
+# =========================
+def _parse_retry_delay_seconds(text: str) -> float | None:
+    if not text:
+        return None
+    # Common patterns: "Please retry in 12s" / "retry in 12s" / "Retry-After: 12"
+    m = re.search(r"retry\s+in\s+(\d+(?:\.\d+)?)\s*s", text, flags=re.I)
+    if m:
+        return float(m.group(1))
+    m = re.search(r"Please\s+retry\s+in\s+(\d+(?:\.\d+)?)\s*s", text, flags=re.I)
+    if m:
+        return float(m.group(1))
+    return None
+
+def cloudflare_text_generate(prompt: str, *, max_retries: int = 5) -> str:
+    if not CF_ACCOUNT_ID or not CF_API_TOKEN:
+        raise RuntimeError("Cloudflare secrets yo'q (CF_ACCOUNT_ID/CF_API_TOKEN).")
+
+    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/{CF_TEXT_MODEL}"
+    headers = {"Authorization": f"Bearer {CF_API_TOKEN}", "Content-Type": "application/json"}
+
+    payload = {
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt},
+        ]
+    }
+
+    base = 1.2  # seconds
+    for attempt in range(max_retries):
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=60)
+        except requests.RequestException as e:
+            # network -> exponential backoff
+            sleep_s = min(20.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6)
+            time.sleep(sleep_s)
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"Network error: {e}")
+            continue
+
+        # Success
+        if 200 <= r.status_code < 300:
+            data = {}
+            try:
+                data = r.json() if r.content else {}
+            except Exception:
+                return r.text or ""
+            # Workers AI typically returns {"result": {...}}; try common fields safely
+            result = data.get("result", data)
+            if isinstance(result, dict):
+                for k in ("response", "output", "text", "answer"):
+                    if k in result and isinstance(result[k], str):
+                        return result[k]
+                # Some models return {"result": {"choices":[{"message":{"content":"..."}}]}}
+                try:
+                    choices = result.get("choices", [])
+                    if choices and isinstance(choices, list):
+                        msg = choices[0].get("message", {})
+                        if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+                            return msg["content"]
+                except Exception:
+                    pass
+            if isinstance(result, str):
+                return result
+            return data.get("text", "") if isinstance(data.get("text", ""), str) else (r.text or "")
+
+        # 429 rate-limit
+        if r.status_code == 429:
+            retry_after = r.headers.get("Retry-After", "")
+            delay = None
+            if retry_after.strip().isdigit():
+                delay = float(retry_after.strip())
+            else:
+                delay = _parse_retry_delay_seconds(r.text or "")
+            if delay is None:
+                delay = min(20.0, base * (2 ** attempt))
+            delay = delay + random.uniform(0.0, 0.8)  # jitter
+            time.sleep(delay)
+            continue
+
+        # 5xx backoff
+        if 500 <= r.status_code <= 599:
+            sleep_s = min(20.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6)
+            time.sleep(sleep_s)
+            continue
+
+        # Other errors: raise with message
+        raise RuntimeError(f"Cloudflare error {r.status_code}: {r.text[:400]}")
+
+    raise RuntimeError("Cloudflare: retries exhausted")
+
+def openrouter_text_generate(prompt: str, *, max_retries: int = 3) -> str:
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OpenRouter key yo'q (OPENROUTER_API_KEY).")
+
+    # NOTE: OpenRouter model is configurable; keep a safe default for demo
+    model_id = st.secrets.get("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct").strip()
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+    }
+
+    base = 1.0
+    for attempt in range(max_retries):
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=60)
+        except requests.RequestException as e:
+            time.sleep(min(10.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6))
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"OpenRouter network error: {e}")
+            continue
+
+        if 200 <= r.status_code < 300:
+            try:
+                data = r.json()
+                return data["choices"][0]["message"]["content"]
+            except Exception:
+                return r.text or ""
+
+        if r.status_code == 429:
+            # OpenRouter often provides retry-after header too
+            retry_after = r.headers.get("Retry-After", "")
+            delay = float(retry_after) if retry_after.strip().isdigit() else min(10.0, base * (2 ** attempt))
+            time.sleep(delay + random.uniform(0.0, 0.8))
+            continue
+
+        if 500 <= r.status_code <= 599:
+            time.sleep(min(10.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6))
+            continue
+
+        raise RuntimeError(f"OpenRouter error {r.status_code}: {r.text[:400]}")
+
+    raise RuntimeError("OpenRouter: retries exhausted")
+
+def text_generate(prompt: str) -> str:
+    """Default: Cloudflare. Fallback: OpenRouter (if key) else Gemini."""
+    provider = (DEFAULT_TEXT_PROVIDER or "cloudflare").lower()
+
+    # 1) Try primary
+    try:
+        if provider == "cloudflare":
+            return cloudflare_text_generate(prompt)
+        if provider == "openrouter":
+            return openrouter_text_generate(prompt)
+        if provider == "gemini":
+            return gemini_text_generate(prompt)
+    except Exception:
+        pass
+
+    # 2) Fallback chain
+    if provider != "cloudflare":
+        try:
+            return cloudflare_text_generate(prompt)
+        except Exception:
+            pass
+    if OPENROUTER_API_KEY and provider != "openrouter":
+        try:
+            return openrouter_text_generate(prompt)
+        except Exception:
+            pass
+
+    # Last resort: Gemini (same fixed model name)
+    return gemini_text_generate(prompt)
+
+
+# =========================
 # TOPBAR
 # =========================
 credits = fetch_live_credits(st.session_state.u_email)
@@ -545,39 +731,42 @@ with ask_cols[0]:
         elif not st.session_state.active_source_ids:
             st.warning("Kamida 1 ta source tanlang.")
         else:
-            # Retrieve chunks (cheap)
-            chunks = simple_retrieve(question, st.session_state.sources, st.session_state.active_source_ids, top_k=8)
-            st.session_state.last_retrieval = chunks
+            if not use_credit_atomic(st.session_state.u_email, 1):
+                st.warning("Kredit tugagan.")
+            else:
+                # Retrieve chunks (cheap)
+                chunks = simple_retrieve(question, st.session_state.sources, st.session_state.active_source_ids, top_k=8)
+                st.session_state.last_retrieval = chunks
 
-            context = format_context(chunks)
-            prompt = f"""
-You must answer ONLY using the provided SOURCE EXCERPTS below.
-If answer is not present, say: "Manbada topilmadi."
-Always include citations by reusing the cite tags like [S:NAME|pX|cY].
+                context = format_context(chunks)
+                prompt = f"""
+    You must answer ONLY using the provided SOURCE EXCERPTS below.
+    If answer is not present, say: "Manbada topilmadi."
+    Always include citations by reusing the cite tags like [S:NAME|pX|cY].
 
-QUESTION:
-{question}
+    QUESTION:
+    {question}
 
-SOURCE EXCERPTS:
-{context}
+    SOURCE EXCERPTS:
+    {context}
 
-FORMAT:
-- Answer in Uzbek
-- Use short paragraphs / bullets when helpful
-- Add citations inline like [S:...]
-"""
-            with st.spinner("Generating answer..."):
-                answer = gemini_text_generate(prompt)
+    FORMAT:
+    - Answer in Uzbek
+    - Use short paragraphs / bullets when helpful
+    - Add citations inline like [S:...]
+    """
+                with st.spinner("Generating answer..."):
+                    answer = text_generate(prompt)
 
-            # If model didn't include cites, we still show retrieval tags for transparency
-            cites = []
-            if chunks:
-                for c in chunks[:5]:
-                    cites.append(f"{c['source_name']} p{c['page']} c{c['chunk_id']}")
+                # If model didn't include cites, we still show retrieval tags for transparency
+                cites = []
+                if chunks:
+                    for c in chunks[:5]:
+                        cites.append(f"{c['source_name']} p{c['page']} c{c['chunk_id']}")
 
-            st.session_state.chat.append({"role": "user", "content": question, "citations": []})
-            st.session_state.chat.append({"role": "assistant", "content": answer, "citations": cites})
-            st.rerun()
+                st.session_state.chat.append({"role": "user", "content": question, "citations": []})
+                st.session_state.chat.append({"role": "assistant", "content": answer, "citations": cites})
+                st.rerun()
 
 with ask_cols[1]:
     st.markdown("<div class='small-btn'>", unsafe_allow_html=True)
@@ -623,23 +812,26 @@ with btn_cols[0]:
             if credits <= 0:
                 st.warning("Kredit tugagan.")
             else:
-                ctx, chunks = studio_context()
-                prompt = f"""
-Create a concise study SUMMARY in Uzbek, grounded ONLY in the excerpts.
-Return:
-1) 8-12 bullet points
-2) 3 key takeaways
-Use inline citations [S:NAME|pX|cY].
+                if not use_credit_atomic(st.session_state.u_email, 1):
+                    st.warning("Kredit tugagan.")
+                else:
+                    ctx, chunks = studio_context()
+                    prompt = f"""
+    Create a concise study SUMMARY in Uzbek, grounded ONLY in the excerpts.
+    Return:
+    1) 8-12 bullet points
+    2) 3 key takeaways
+    Use inline citations [S:NAME|pX|cY].
 
-EXCERPTS:
-{ctx}
-"""
-                with st.spinner("Generating summary..."):
-                    out = gemini_text_generate(prompt)
-                st.session_state.studio_output["summary"] = out
-                # Optionally spend 1 credit per studio action:
-                # use_credit_atomic(st.session_state.u_email, 1)
-                st.rerun()
+    EXCERPTS:
+    {ctx}
+    """
+                    with st.spinner("Generating summary..."):
+                        out = text_generate(prompt)
+                    st.session_state.studio_output["summary"] = out
+                    # Optionally spend 1 credit per studio action:
+                    # use_credit_atomic(st.session_state.u_email, 1)
+                    st.rerun()
 
 with btn_cols[1]:
     if st.button("Flashcards"):
@@ -649,31 +841,34 @@ with btn_cols[1]:
             if credits <= 0:
                 st.warning("Kredit tugagan.")
             else:
-                ctx, chunks = studio_context()
-                prompt = f"""
-Generate 8-12 FLASHCARDS in Uzbek, grounded ONLY in excerpts.
-Format strictly as JSON:
-[
-  {{"q":"...","a":"...","cite":"[S:...]" }},
-  ...
-]
-Keep answers short. Use citations.
+                if not use_credit_atomic(st.session_state.u_email, 1):
+                    st.warning("Kredit tugagan.")
+                else:
+                    ctx, chunks = studio_context()
+                    prompt = f"""
+    Generate 8-12 FLASHCARDS in Uzbek, grounded ONLY in excerpts.
+    Format strictly as JSON:
+    [
+      {{"q":"...","a":"...","cite":"[S:...]" }},
+      ...
+    ]
+    Keep answers short. Use citations.
 
-EXCERPTS:
-{ctx}
-"""
-                with st.spinner("Generating flashcards..."):
-                    out = gemini_text_generate(prompt)
-                # parse JSON safely
-                cards = []
-                try:
-                    cards = json.loads(out.strip())
-                    if not isinstance(cards, list):
-                        cards = []
-                except Exception:
+    EXCERPTS:
+    {ctx}
+    """
+                    with st.spinner("Generating flashcards..."):
+                        out = text_generate(prompt)
+                    # parse JSON safely
                     cards = []
-                st.session_state.studio_output["flashcards"] = cards
-                st.rerun()
+                    try:
+                        cards = json.loads(out.strip())
+                        if not isinstance(cards, list):
+                            cards = []
+                    except Exception:
+                        cards = []
+                    st.session_state.studio_output["flashcards"] = cards
+                    st.rerun()
 
 with btn_cols[2]:
     if st.button("Quiz"):
@@ -683,30 +878,33 @@ with btn_cols[2]:
             if credits <= 0:
                 st.warning("Kredit tugagan.")
             else:
-                ctx, chunks = studio_context()
-                prompt = f"""
-Generate a QUIZ of 8 questions in Uzbek grounded ONLY in excerpts.
-Return JSON:
-[
-  {{"q":"...","options":["A","B","C","D"],"answer_index":0,"explain":"...","cite":"[S:...]" }},
-  ...
-]
-Make it easy for demo.
+                if not use_credit_atomic(st.session_state.u_email, 1):
+                    st.warning("Kredit tugagan.")
+                else:
+                    ctx, chunks = studio_context()
+                    prompt = f"""
+    Generate a QUIZ of 8 questions in Uzbek grounded ONLY in excerpts.
+    Return JSON:
+    [
+      {{"q":"...","options":["A","B","C","D"],"answer_index":0,"explain":"...","cite":"[S:...]" }},
+      ...
+    ]
+    Make it easy for demo.
 
-EXCERPTS:
-{ctx}
-"""
-                with st.spinner("Generating quiz..."):
-                    out = gemini_text_generate(prompt)
-                quiz = []
-                try:
-                    quiz = json.loads(out.strip())
-                    if not isinstance(quiz, list):
-                        quiz = []
-                except Exception:
+    EXCERPTS:
+    {ctx}
+    """
+                    with st.spinner("Generating quiz..."):
+                        out = text_generate(prompt)
                     quiz = []
-                st.session_state.studio_output["quiz"] = quiz
-                st.rerun()
+                    try:
+                        quiz = json.loads(out.strip())
+                        if not isinstance(quiz, list):
+                            quiz = []
+                    except Exception:
+                        quiz = []
+                    st.session_state.studio_output["quiz"] = quiz
+                    st.rerun()
 
 st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
 
@@ -775,29 +973,32 @@ elif export_format == "TXT":
         txt.append(f"Q: {q.get('q','')}\nOptions: {q.get('options',[])}\nAnswer: {q.get('answer_index',0)}\nCITE: {q.get('cite','')}\n")
     st.download_button("Download TXT", "\n".join(txt), "studio_export.txt", mime="text/plain")
 else:
-    doc = Document()
-    doc.add_heading("Manuscript AI Studio Export", level=1)
-    doc.add_paragraph(f"User: {st.session_state.u_email}")
-    doc.add_paragraph(f"Date: {export_payload['date']}")
-    doc.add_heading("Chat", level=2)
-    for m in st.session_state.chat:
-        doc.add_paragraph(f"{m['role'].upper()}: {m['content']}")
-    doc.add_heading("Studio Summary", level=2)
-    doc.add_paragraph(out.get("summary",""))
-    doc.add_heading("Flashcards", level=2)
-    for c in out.get("flashcards", []):
-        doc.add_paragraph(f"Q: {c.get('q','')}")
-        doc.add_paragraph(f"A: {c.get('a','')}")
-        doc.add_paragraph(f"Cite: {c.get('cite','')}")
-    doc.add_heading("Quiz", level=2)
-    for q in out.get("quiz", []):
-        doc.add_paragraph(f"Q: {q.get('q','')}")
-        doc.add_paragraph(f"Options: {q.get('options',[])}")
-        doc.add_paragraph(f"Answer index: {q.get('answer_index',0)}")
-        doc.add_paragraph(f"Cite: {q.get('cite','')}")
-    bio = io.BytesIO()
-    doc.save(bio)
-    st.download_button("Download DOCX", bio.getvalue(), "studio_export.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    if Document is None:
+        st.info("DOCX export uchun python-docx kutubxonasi kerak. Hozir o'rnatilmagan.")
+    else:
+        doc = Document()
+        doc.add_heading("Manuscript AI Studio Export", level=1)
+        doc.add_paragraph(f"User: {st.session_state.u_email}")
+        doc.add_paragraph(f"Date: {export_payload['date']}")
+        doc.add_heading("Chat", level=2)
+        for m in st.session_state.chat:
+            doc.add_paragraph(f"{m['role'].upper()}: {m['content']}")
+        doc.add_heading("Studio Summary", level=2)
+        doc.add_paragraph(out.get("summary",""))
+        doc.add_heading("Flashcards", level=2)
+        for c in out.get("flashcards", []):
+            doc.add_paragraph(f"Q: {c.get('q','')}")
+            doc.add_paragraph(f"A: {c.get('a','')}")
+            doc.add_paragraph(f"Cite: {c.get('cite','')}")
+        doc.add_heading("Quiz", level=2)
+        for q in out.get("quiz", []):
+            doc.add_paragraph(f"Q: {q.get('q','')}")
+            doc.add_paragraph(f"Options: {q.get('options',[])}")
+            doc.add_paragraph(f"Answer index: {q.get('answer_index',0)}")
+            doc.add_paragraph(f"Cite: {q.get('cite','')}")
+            bio = io.BytesIO()
+            doc.save(bio)
+            st.download_button("Download DOCX", bio.getvalue(), "studio_export.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 st.markdown("</div>", unsafe_allow_html=True)  # end studio panel
 
