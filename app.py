@@ -255,6 +255,51 @@ footer { visibility: hidden; }
 @media (max-width: 1000px){
   .nlm-grid{ grid-template-columns: 1fr; }
 }
+
+/* --- NotebookLM-like fixed layout improvements --- */
+:root { --topbar-h: 64px; }
+
+.nlm-topbar{
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  min-height: var(--topbar-h);
+  background: rgba(11, 13, 17, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.nlm-shell{
+  height: 100vh;
+  overflow: hidden;
+}
+
+.nlm-grid{
+  height: calc(100vh - var(--topbar-h));
+  overflow: hidden;
+}
+
+.nlm-panel{
+  height: calc(100vh - var(--topbar-h) - 20px);
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+/* make center feel like chat area */
+.nlm-panel.nlm-center{
+  padding-bottom: 28px;
+}
+
+/* subtle scrollbars (works in Chromium) */
+.nlm-panel::-webkit-scrollbar{ width: 10px; }
+.nlm-panel::-webkit-scrollbar-track{ background: transparent; }
+.nlm-panel::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px;
+}
+.nlm-panel::-webkit-scrollbar-thumb:hover{
+  background: rgba(255,255,255,0.14);
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -543,27 +588,33 @@ def text_generate(prompt: str) -> str:
     # 1) Try primary
     try:
         if provider == "cloudflare":
-            return cloudflare_text_generate(prompt)
+            _set_last_provider('cloudflare')
+        return cloudflare_text_generate(prompt)
         if provider == "openrouter":
-            return openrouter_text_generate(prompt)
+            _set_last_provider('openrouter')
+        return openrouter_text_generate(prompt)
         if provider == "gemini":
-            return gemini_text_generate(prompt)
+            _set_last_provider('gemini')
+    return gemini_text_generate(prompt)
     except Exception:
         pass
 
     # 2) Fallback chain
     if provider != "cloudflare":
         try:
-            return cloudflare_text_generate(prompt)
+            _set_last_provider('cloudflare')
+        return cloudflare_text_generate(prompt)
         except Exception:
             pass
     if OPENROUTER_API_KEY and provider != "openrouter":
         try:
-            return openrouter_text_generate(prompt)
+            _set_last_provider('openrouter')
+        return openrouter_text_generate(prompt)
         except Exception:
             pass
 
     # Last resort: Gemini (same fixed model name)
+    _set_last_provider('gemini')
     return gemini_text_generate(prompt)
 
 
@@ -571,12 +622,13 @@ def text_generate(prompt: str) -> str:
 # TOPBAR
 # =========================
 credits = fetch_live_credits(st.session_state.u_email)
+provider_badge = st.session_state.get('last_provider', '—')
 
 st.markdown("<div class='nlm-shell'>", unsafe_allow_html=True)
 st.markdown(f"""
   <div class="nlm-topbar">
     <div class="nlm-brand">📓 Manuscript AI Studio <span class="nlm-pill">NotebookLM dark-gray</span></div>
-    <div class="nlm-pill">👤 {st.session_state.u_email} · 💳 {credits} credits</div>
+    <div class="nlm-pill">👤 {st.session_state.u_email} · 💳 {credits} credits · 🧠 {provider_badge}</div>
   </div>
 """, unsafe_allow_html=True)
 
@@ -586,7 +638,7 @@ st.markdown(f"""
 st.markdown("<div class='nlm-grid'>", unsafe_allow_html=True)
 
 # ---------- SOURCES (LEFT) ----------
-st.markdown("<div class='nlm-panel'>", unsafe_allow_html=True)
+st.markdown("<div class='nlm-panel nlm-left'>", unsafe_allow_html=True)
 st.markdown("<h3>Sources</h3><div class='nlm-sub'>Upload PDF or paste text. Select sources to use.</div>", unsafe_allow_html=True)
 
 with st.expander("+ Add sources", expanded=True):
@@ -687,8 +739,7 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)  # end sources panel
 
 
-# ---------- CHAT (MIDDLE) ----------
-st.markdown("<div class='nlm-panel'>", unsafe_allow_html=True)
+# ---------- CHAT (MIDDLE) --st.markdown("<div class='nlm-panel nlm-center'>"-panel'>", unsafe_allow_html=True)
 st.markdown("<h3>Chat</h3><div class='nlm-sub'>Ask questions grounded in your sources (with citations).</div>", unsafe_allow_html=True)
 
 suggest_cols = st.columns(3)
@@ -779,8 +830,7 @@ with ask_cols[1]:
 st.markdown("</div>", unsafe_allow_html=True)  # end chat panel
 
 
-# ---------- STUDIO (RIGHT) ----------
-st.markdown("<div class='nlm-panel'>", unsafe_allow_html=True)
+# ---------- STUDIOst.markdown("<div class='nlm-panel nlm-right'>" class='nlm-panel'>", unsafe_allow_html=True)
 st.markdown("<h3>Studio</h3><div class='nlm-sub'>Generate study materials from selected sources.</div>", unsafe_allow_html=True)
 
 def studio_context():
@@ -868,6 +918,8 @@ with btn_cols[1]:
                     except Exception:
                         cards = []
                     st.session_state.studio_output["flashcards"] = cards
+                    if not cards:
+                        st.warning("Flashcards bo‘sh chiqdi (model JSON formatini buzgan bo‘lishi mumkin). Logs’ni tekshiring.")
                     st.rerun()
 
 with btn_cols[2]:
@@ -904,6 +956,8 @@ with btn_cols[2]:
                     except Exception:
                         quiz = []
                     st.session_state.studio_output["quiz"] = quiz
+                    if not quiz:
+                        st.warning("Quiz bo‘sh chiqdi (model JSON formatini buzgan bo‘lishi mumkin). Logs’ni tekshiring.")
                     st.rerun()
 
 st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
@@ -1006,3 +1060,8 @@ st.markdown("</div>", unsafe_allow_html=True)  # end grid
 st.markdown("</div>", unsafe_allow_html=True)  # end shell
 
 gc.collect()
+def _set_last_provider(name: str):
+    try:
+        st.session_state["last_provider"] = name
+    except Exception:
+        pass
