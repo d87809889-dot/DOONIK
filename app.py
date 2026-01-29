@@ -26,6 +26,17 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+import os
+
+def load_css(file_name="streamlit_styles.css"):
+    css_path = os.path.join(os.path.dirname(__file__), file_name)
+    if os.path.exists(css_path):
+        with open(css_path, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    else:
+        st.warning(f"CSS file not found: {css_path}")
+
+load_css()
 
 # =========================
 # SECRETS / SERVICES
@@ -1075,3 +1086,4 @@ def _set_last_provider(name: str):
         st.session_state["last_provider"] = name
     except Exception:
         pass
+
