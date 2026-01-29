@@ -132,187 +132,6 @@ model = genai.GenerativeModel(
 # =========================
 # NOTEBOOKLM DARK-GRAY CSS
 # =========================
-st.markdown("""
-<style>
-/* --- Global --- */
-html, body, [class*="css"]  { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-.stApp { background: #0f1115; color: #e8eaed; }
-header[data-testid="stHeader"] { background: rgba(0,0,0,0) !important; }
-footer { visibility: hidden; }
-#stDecoration { display:none; }
-.stAppDeployButton { display:none; }
-
-/* --- Layout containers --- */
-.nlm-shell {
-  display: block;
-  padding: 10px 6px 0 6px;
-}
-.nlm-topbar {
-  display:flex; align-items:center; justify-content:space-between;
-  gap:12px; padding: 6px 10px 14px 10px;
-}
-.nlm-brand {
-  font-weight: 700; letter-spacing: 0.2px; font-size: 16px;
-  color:#e8eaed; display:flex; gap:10px; align-items:center;
-}
-.nlm-pill {
-  font-size: 12px; color:#c7c9cc; padding: 4px 10px;
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 999px; background: rgba(255,255,255,0.04);
-}
-.nlm-grid {
-  display:grid;
-  grid-template-columns: 1.05fr 1.6fr 1.05fr;
-  gap: 12px;
-  align-items: start;
-}
-
-/* --- Panels --- */
-.nlm-panel {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 14px;
-  padding: 12px;
-  box-shadow: 0 8px 26px rgba(0,0,0,0.25);
-}
-.nlm-panel h3{
-  margin: 0 0 10px 0; padding: 0;
-  font-size: 13px; font-weight: 700; color:#e8eaed;
-  border: none !important; text-align:left !important;
-}
-.nlm-sub {
-  color:#aab0b6; font-size: 12px; margin-top:-4px; margin-bottom: 10px;
-}
-.nlm-divider {
-  height:1px; background: rgba(255,255,255,0.08);
-  margin: 10px 0;
-}
-
-/* --- Buttons --- */
-.stButton>button {
-  background: rgba(255,255,255,0.06) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  color: #e8eaed !important;
-  border-radius: 12px !important;
-  padding: 10px 12px !important;
-  font-weight: 600 !important;
-  width:100% !important;
-}
-.stButton>button:hover{
-  background: rgba(255,255,255,0.10) !important;
-  border-color: rgba(255,255,255,0.18) !important;
-}
-.small-btn .stButton>button{
-  padding: 8px 10px !important;
-  border-radius: 10px !important;
-  font-size: 12px !important;
-}
-
-/* --- Inputs --- */
-.stTextInput input, .stTextArea textarea {
-  background: rgba(0,0,0,0.30) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  color: #e8eaed !important;
-  border-radius: 12px !important;
-}
-.stTextInput input:focus, .stTextArea textarea:focus{
-  border-color: rgba(255,255,255,0.22) !important;
-  box-shadow: none !important;
-}
-
-/* --- Chip style --- */
-.nlm-chip {
-  display:inline-block;
-  font-size: 11px; color:#c7c9cc;
-  padding: 4px 8px;
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 999px;
-  background: rgba(0,0,0,0.22);
-  margin-right:6px; margin-top:6px;
-}
-.nlm-cite {
-  display:inline-block;
-  font-size: 11px; color:#c7c9cc;
-  padding: 3px 8px;
-  border: 1px dashed rgba(255,255,255,0.16);
-  border-radius: 999px;
-  background: rgba(255,255,255,0.04);
-  margin-right:6px; margin-top:6px;
-}
-
-/* --- Chat bubbles --- */
-.msg-user {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  padding: 10px 12px; border-radius: 14px;
-  margin-bottom: 10px;
-}
-.msg-ai {
-  background: rgba(0,0,0,0.28);
-  border: 1px solid rgba(255,255,255,0.08);
-  padding: 10px 12px; border-radius: 14px;
-  margin-bottom: 12px;
-}
-.msg-h {
-  font-size: 12px; font-weight: 700; color:#e8eaed;
-  margin-bottom: 6px;
-}
-.msg-t {
-  font-size: 13px; line-height: 1.55; color:#e8eaed;
-  white-space: pre-wrap;
-}
-
-/* --- Responsive --- */
-@media (max-width: 1000px){
-  .nlm-grid{ grid-template-columns: 1fr; }
-}
-
-/* --- NotebookLM-like fixed layout improvements --- */
-:root { --topbar-h: 64px; }
-
-.nlm-topbar{
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  min-height: var(--topbar-h);
-  background: rgba(11, 13, 17, 0.82);
-  backdrop-filter: blur(10px);
-}
-
-.nlm-shell{
-  height: 100vh;
-  overflow: hidden;
-}
-
-.nlm-grid{
-  height: calc(100vh - var(--topbar-h));
-  overflow: hidden;
-}
-
-.nlm-panel{
-  height: calc(100vh - var(--topbar-h) - 20px);
-  overflow-y: auto;
-  scrollbar-gutter: stable both-edges;
-}
-
-/* make center feel like chat area */
-.nlm-panel.nlm-center{
-  padding-bottom: 28px;
-}
-
-/* subtle scrollbars (works in Chromium) */
-.nlm-panel::-webkit-scrollbar{ width: 10px; }
-.nlm-panel::-webkit-scrollbar-track{ background: transparent; }
-.nlm-panel::-webkit-scrollbar-thumb{
-  background: rgba(255,255,255,0.08);
-  border-radius: 999px;
-}
-.nlm-panel::-webkit-scrollbar-thumb:hover{
-  background: rgba(255,255,255,0.14);
-}
-
-</style>
-""", unsafe_allow_html=True)
 
 
 # =========================
@@ -760,7 +579,8 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)  # end sources panel
 
 
-# ---------- CHAT (MIDDLE) --st.markdown("<div class='nlm-panel nlm-center'>"-panel'>", unsafe_allow_html=True)
+# ---------- CHAT (MIDDLE)
+st.markdown("<div class='nlm-panel nlm-center'>", unsafe_allow_html=True)
 st.markdown("<h3>Chat</h3><div class='nlm-sub'>Ask questions grounded in your sources (with citations).</div>", unsafe_allow_html=True)
 
 suggest_cols = st.columns(3)
@@ -851,7 +671,8 @@ with ask_cols[1]:
 st.markdown("</div>", unsafe_allow_html=True)  # end chat panel
 
 
-# ---------- STUDIOst.markdown("<div class='nlm-panel nlm-right'>" class='nlm-panel'>", unsafe_allow_html=True)
+# ---------- STUDIO (RIGHT)
+st.markdown("<div class='nlm-panel nlm-right'>", unsafe_allow_html=True)
 st.markdown("<h3>Studio</h3><div class='nlm-sub'>Generate study materials from selected sources.</div>", unsafe_allow_html=True)
 
 def studio_context():
@@ -1086,4 +907,3 @@ def _set_last_provider(name: str):
         st.session_state["last_provider"] = name
     except Exception:
         pass
-
