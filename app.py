@@ -366,7 +366,13 @@ def extract_pdf_text_pages(pdf_bytes: bytes, max_pages: int = 30):
     return pages
 
 def simple_retrieve(question: str, sources, active_ids, top_k: int = 8):
-    """Cheap retrieval: keyword overlap scoring."""
+    """Fuzzy retrieval: keyword overlap + Levenshtein/qisman moslik."""
+    import difflib
+    try:
+        from Levenshtein import distance as lev_distance
+    except ImportError:
+        lev_distance = None
+
     q = normalize_ws(question).lower()
     if not q:
         return []
@@ -378,12 +384,18 @@ def simple_retrieve(question: str, sources, active_ids, top_k: int = 8):
             continue
         for ch in s["chunks"]:
             txt = ch["text"].lower()
-            # overlap score
-            score = 0
-            for t in q_terms:
-                if t in txt:
-                    score += 1
-            if score > 0:
+            # 1. Keyword overlap
+            overlap_score = sum(1 for t in q_terms if t in txt)
+            # 2. Fuzzy ratio (difflib)
+            fuzzy_score = difflib.SequenceMatcher(None, q, txt[:min(300, len(txt))]).ratio()
+            # 3. Levenshtein distance (if available)
+            lev_score = 0
+            if lev_distance:
+                lev = lev_distance(q, txt[:min(300, len(txt))])
+                lev_score = max(0, 1 - lev / max(len(q), 1))
+            # Combined score
+            score = overlap_score + fuzzy_score * 2 + lev_score
+            if score > 0.2:
                 pool.append((score, s, ch))
 
     pool.sort(key=lambda x: x[0], reverse=True)
