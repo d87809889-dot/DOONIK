@@ -774,7 +774,11 @@ with ask_cols[0]:
                 chunks = simple_retrieve(question, st.session_state.sources, st.session_state.active_source_ids, top_k=8)
                 st.session_state.last_retrieval = chunks
 
+                # DEBUG: retrieval natijasini va contextni ko'rsatish
+                st.write("**[DEBUG] Retrieval natijasi (chunks):**", chunks)
                 context = format_context(chunks)
+                st.write("**[DEBUG] Modelga yuboriladigan context:**", context)
+
                 prompt = f"""
     You must answer ONLY using the provided SOURCE EXCERPTS below.
     If answer is not present, say: "Manbada topilmadi."
