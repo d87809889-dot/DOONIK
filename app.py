@@ -122,10 +122,10 @@ model = genai.GenerativeModel(
 # NOTEBOOKLM DARK-GRAY CSS
 # =========================
 st.markdown("""
+<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css\">
 <style>
-/* --- Global --- */
-html, body, [class*="css"]  { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-.stApp { background: #0f1115; color: #e8eaed; }
+html, body, [class*="css"]  { font-family: 'Segoe UI', 'Roboto', Arial, sans-serif; }
+.stApp { background: linear-gradient(135deg, #232526 0%, #414345 100%); color: #e8eaed; }
 header[data-testid="stHeader"] { background: rgba(0,0,0,0) !important; }
 footer { visibility: hidden; }
 #stDecoration { display:none; }
@@ -133,127 +133,152 @@ footer { visibility: hidden; }
 
 /* --- Layout containers --- */
 .nlm-shell {
-  display: block;
-  padding: 10px 6px 0 6px;
+    display: block;
+    padding: 10px 6px 0 6px;
 }
 .nlm-topbar {
-  display:flex; align-items:center; justify-content:space-between;
-  gap:12px; padding: 6px 10px 14px 10px;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding: 6px 10px 14px 10px;
+    background: rgba(34,37,41,0.95);
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(34,37,41,0.12);
 }
 .nlm-brand {
-  font-weight: 700; letter-spacing: 0.2px; font-size: 16px;
-  color:#e8eaed; display:flex; gap:10px; align-items:center;
+    font-weight: 700; letter-spacing: 0.2px; font-size: 20px;
+    color:#e8eaed; display:flex; gap:10px; align-items:center;
+}
+.nlm-brand .fa-book {
+    color: #8f94fb;
+    font-size: 1.5em;
 }
 .nlm-pill {
-  font-size: 12px; color:#c7c9cc; padding: 4px 10px;
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 999px; background: rgba(255,255,255,0.04);
+    font-size: 13px; color:#c7c9cc; padding: 5px 14px;
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 999px; background: rgba(255,255,255,0.07);
+    margin-left: 8px;
+}
+.nlm-avatar {
+    width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg,#8f94fb 0%,#4e54c8 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1em; margin-right: 10px; border: 2px solid #fff2; box-shadow: 0 2px 8px #8f94fb33;
 }
 .nlm-grid {
-  display:grid;
-  grid-template-columns: 1.05fr 1.6fr 1.05fr;
-  gap: 12px;
-  align-items: start;
+    display:grid;
+    grid-template-columns: 1.05fr 1.6fr 1.05fr;
+    gap: 16px;
+    align-items: start;
 }
 
 /* --- Panels --- */
 .nlm-panel {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 14px;
-  padding: 12px;
-  box-shadow: 0 8px 26px rgba(0,0,0,0.25);
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 18px;
+    padding: 18px 16px 16px 16px;
+    box-shadow: 0 8px 32px rgba(34,37,41,0.18);
+    margin-bottom: 8px;
+    transition: box-shadow 0.2s;
+}
+.nlm-panel:hover {
+    box-shadow: 0 12px 40px rgba(143,148,251,0.18);
 }
 .nlm-panel h3{
-  margin: 0 0 10px 0; padding: 0;
-  font-size: 13px; font-weight: 700; color:#e8eaed;
-  border: none !important; text-align:left !important;
+    margin: 0 0 10px 0; padding: 0;
+    font-size: 15px; font-weight: 700; color:#8f94fb;
+    border: none !important; text-align:left !important;
+    display: flex; align-items: center; gap: 8px;
 }
+.nlm-panel h3 .fa { color: #8f94fb; }
 .nlm-sub {
-  color:#aab0b6; font-size: 12px; margin-top:-4px; margin-bottom: 10px;
+    color:#aab0b6; font-size: 13px; margin-top:-4px; margin-bottom: 10px;
 }
 .nlm-divider {
-  height:1px; background: rgba(255,255,255,0.08);
-  margin: 10px 0;
+    height:1px; background: rgba(255,255,255,0.10);
+    margin: 12px 0;
 }
 
 /* --- Buttons --- */
 .stButton>button {
-  background: rgba(255,255,255,0.06) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  color: #e8eaed !important;
-  border-radius: 12px !important;
-  padding: 10px 12px !important;
-  font-weight: 600 !important;
-  width:100% !important;
+    background: linear-gradient(90deg, #4e54c8 0%, #8f94fb 100%) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 14px !important;
+    padding: 12px 20px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 8px rgba(78,84,200,0.15);
+    transition: 0.2s;
 }
 .stButton>button:hover{
-  background: rgba(255,255,255,0.10) !important;
-  border-color: rgba(255,255,255,0.18) !important;
+    background: linear-gradient(90deg, #8f94fb 0%, #4e54c8 100%) !important;
+    box-shadow: 0 4px 16px rgba(78,84,200,0.25);
 }
 .small-btn .stButton>button{
-  padding: 8px 10px !important;
-  border-radius: 10px !important;
-  font-size: 12px !important;
+    padding: 8px 10px !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
 }
 
 /* --- Inputs --- */
 .stTextInput input, .stTextArea textarea {
-  background: rgba(0,0,0,0.30) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  color: #e8eaed !important;
-  border-radius: 12px !important;
+    background: rgba(255,255,255,0.08) !important;
+    color: #e8eaed !important;
+    border-radius: 10px !important;
+    border: 1px solid #4e54c8 !important;
 }
 .stTextInput input:focus, .stTextArea textarea:focus{
-  border-color: rgba(255,255,255,0.22) !important;
-  box-shadow: none !important;
+    border-color: #8f94fb !important;
+    box-shadow: 0 0 0 2px #8f94fb33 !important;
 }
 
 /* --- Chip style --- */
 .nlm-chip {
-  display:inline-block;
-  font-size: 11px; color:#c7c9cc;
-  padding: 4px 8px;
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 999px;
-  background: rgba(0,0,0,0.22);
-  margin-right:6px; margin-top:6px;
+    display:inline-block;
+    font-size: 12px; color:#c7c9cc;
+    padding: 5px 10px;
+    border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 999px;
+    background: rgba(0,0,0,0.22);
+    margin-right:8px; margin-top:8px;
 }
 .nlm-cite {
-  display:inline-block;
-  font-size: 11px; color:#c7c9cc;
-  padding: 3px 8px;
-  border: 1px dashed rgba(255,255,255,0.16);
-  border-radius: 999px;
-  background: rgba(255,255,255,0.04);
-  margin-right:6px; margin-top:6px;
+    display:inline-block;
+    font-size: 12px; color:#c7c9cc;
+    padding: 4px 10px;
+    border: 1px dashed rgba(255,255,255,0.18);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    margin-right:8px; margin-top:8px;
 }
 
 /* --- Chat bubbles --- */
 .msg-user {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  padding: 10px 12px; border-radius: 14px;
-  margin-bottom: 10px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.13);
+    padding: 12px 16px; border-radius: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(143,148,251,0.10);
 }
 .msg-ai {
-  background: rgba(0,0,0,0.28);
-  border: 1px solid rgba(255,255,255,0.08);
-  padding: 10px 12px; border-radius: 14px;
-  margin-bottom: 12px;
+    background: rgba(143,148,251,0.10);
+    border: 1px solid rgba(143,148,251,0.18);
+    padding: 12px 16px; border-radius: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 8px rgba(143,148,251,0.10);
 }
 .msg-h {
-  font-size: 12px; font-weight: 700; color:#e8eaed;
-  margin-bottom: 6px;
+    font-size: 13px; font-weight: 700; color:#8f94fb;
+    margin-bottom: 6px;
 }
 .msg-t {
-  font-size: 13px; line-height: 1.55; color:#e8eaed;
-  white-space: pre-wrap;
+    font-size: 14px; line-height: 1.6; color:#e8eaed;
+    white-space: pre-wrap;
 }
+
+/* --- Animated spinner --- */
+.fa-spinner { animation: spin 1.2s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
 
 /* --- Responsive --- */
 @media (max-width: 1000px){
-  .nlm-grid{ grid-template-columns: 1fr; }
+    .nlm-grid{ grid-template-columns: 1fr; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -573,11 +598,22 @@ def text_generate(prompt: str) -> str:
 credits = fetch_live_credits(st.session_state.u_email)
 
 st.markdown("<div class='nlm-shell'>", unsafe_allow_html=True)
+# --- User avatar/profile (7) ---
+def get_avatar_html(email):
+        initials = ""
+        if email:
+                parts = email.split("@")[0].split(".")
+                initials = ''.join([p[0].upper() for p in parts if p])[:2]
+        return f'<div class="nlm-avatar">{initials or "U"}</div>'
+
 st.markdown(f"""
-  <div class="nlm-topbar">
-    <div class="nlm-brand">📓 Manuscript AI Studio <span class="nlm-pill">NotebookLM dark-gray</span></div>
-    <div class="nlm-pill">👤 {st.session_state.u_email} · 💳 {credits} credits</div>
-  </div>
+    <div class="nlm-topbar">
+        <div class="nlm-brand"><i class="fa fa-book"></i> Manuscript AI Studio <span class="nlm-pill"><i class="fa fa-moon"></i> NotebookLM dark-gray</span></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            {get_avatar_html(st.session_state.u_email)}
+            <div class="nlm-pill"><i class="fa fa-user"></i> {st.session_state.u_email} · <i class="fa fa-coins"></i> {credits} credits</div>
+        </div>
+    </div>
 """, unsafe_allow_html=True)
 
 # =========================
