@@ -122,7 +122,7 @@ model = genai.GenerativeModel(
 # NOTEBOOKLM DARK-GRAY CSS
 # =========================
 st.markdown("""
-<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css\">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 <style>
 html, body, [class*="css"]  { font-family: 'Segoe UI', 'Roboto', Arial, sans-serif; }
 .stApp { background: linear-gradient(135deg, #232526 0%, #414345 100%); color: #e8eaed; }
