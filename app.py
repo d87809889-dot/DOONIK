@@ -1,1060 +1,1258 @@
-# app.py — NotebookLM-style (Sources | Chat | Studio) for Manuscript AI Center
-# NOTE: Gemini model_name MUST stay: "gemini-flash-latest"
+# File: app_ultra_pro.py
 
 import streamlit as st
 import google.generativeai as genai
+from PIL import Image, ImageEnhance, ImageOps
 import pypdfium2 as pdfium
-import io, re, json, gc, base64
-import time, random
-import requests
+import io, gc, base64, json
 from datetime import datetime
+from docx import Document
 from supabase import create_client
-try:
-    from docx import Document
-except Exception:
-    Document = None
-
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
-
-# =========================
-# PAGE CONFIG (NotebookLM vibe)
-# =========================
+# ==========================================
+# 1. TIZIM VA SEO SOZLAMALARI
+# ==========================================
 st.set_page_config(
-    page_title="Manuscript AI Studio",
-    page_icon="📓",
+    page_title="Manuscript AI - Global Academic Master",
+    page_icon="📜",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="auto"
 )
 
-# =========================
-# SECRETS / SERVICES
-# =========================
+# ==========================================
+# SESSION STATE INITIALIZATION
+# ==========================================
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+if "u_email" not in st.session_state:
+    st.session_state.u_email = ""
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+if "theme" not in st.session_state:
+    st.session_state.theme = "Antik Oltin"
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "imgs" not in st.session_state:
+    st.session_state.imgs = []
+if "results" not in st.session_state:
+    st.session_state.results = {}
+if "chats" not in st.session_state:
+    st.session_state.chats = {}
+if "compare_mode" not in st.session_state:
+    st.session_state.compare_mode = False
+if "current_page_index" not in st.session_state:
+    st.session_state.current_page_index = 0
+if "show_landing" not in st.session_state:
+    st.session_state.show_landing = True
+
+# ==========================================
+# THEME DEFINITIONS
+# ==========================================
+THEMES = {
+    "Antik Oltin": {
+        "primary": "#0c1421",
+        "accent": "#c5a059",
+        "accent2": "#d4af37",
+        "bg_light": "#f4ecd8",
+        "bg_light2": "#fdfaf1",
+        "bg_dark": "#1a1a1a",
+        "bg_dark2": "#2d2d2d"
+    },
+    "Moviy Akademik": {
+        "primary": "#1e3a8a",
+        "accent": "#3b82f6",
+        "accent2": "#60a5fa",
+        "bg_light": "#eff6ff",
+        "bg_light2": "#dbeafe",
+        "bg_dark": "#1e293b",
+        "bg_dark2": "#334155"
+    },
+    "Yashil Tabiat": {
+        "primary": "#065f46",
+        "accent": "#10b981",
+        "accent2": "#34d399",
+        "bg_light": "#ecfdf5",
+        "bg_light2": "#d1fae5",
+        "bg_dark": "#1a2e1a",
+        "bg_dark2": "#2d4a2d"
+    }
+}
+
+theme = THEMES[st.session_state.theme]
+dark = st.session_state.dark_mode
+
+# Dynamic color variables
+bg_main = theme["bg_dark"] if dark else theme["bg_light"]
+bg_secondary = theme["bg_dark2"] if dark else theme["bg_light2"]
+text_primary = "#e0e0e0" if dark else "#1a1a1a"
+text_secondary = "#a0a0a0" if dark else "#5d4037"
+card_bg = theme["bg_dark2"] if dark else "#ffffff"
+
+# ==========================================
+# DYNAMIC CSS
+# ==========================================
+st.markdown(f"""
+    <style>
+    /* === SYSTEM OVERRIDES === */
+    footer {{visibility: hidden !important;}}
+    .stAppDeployButton {{display:none !important;}}
+    #stDecoration {{display:none !important;}}
+
+    header[data-testid='stHeader'] {{
+        background: rgba(0,0,0,0) !important;
+        visibility: visible !important;
+    }}
+
+    button[data-testid='stSidebarCollapseButton'] {{
+        background-color: {theme['primary']} !important;
+        color: {theme['accent']} !important;
+        border: 1px solid {theme['accent']} !important;
+        position: fixed !important;
+        z-index: 1000001 !important;
+        transition: all 0.3s ease !important;
+    }}
+    
+    button[data-testid='stSidebarCollapseButton']:hover {{
+        background-color: {theme['accent']} !important;
+        color: {theme['primary']} !important;
+        transform: scale(1.05);
+    }}
+
+    /* === MAIN LAYOUT === */
+    .main {{ 
+        background: linear-gradient(135deg, {bg_main} 0%, {bg_secondary} 100%) !important;
+        color: {text_primary} !important;
+        font-family: 'Times New Roman', serif;
+        padding: 2rem 1rem;
+    }}
+    
+    /* === TYPOGRAPHY === */
+    h1, h2, h3, h4 {{ 
+        color: {theme['primary']} !important;
+        font-family: 'Georgia', serif;
+        border-bottom: 2px solid {theme['accent']};
+        text-align: center;
+        padding-bottom: 12px;
+        margin-bottom: 20px;
+    }}
+    
+    h1 {{
+        font-size: clamp(1.8rem, 4vw, 2.5rem) !important;
+        margin-top: 0;
+    }}
+    
+    h2 {{
+        font-size: clamp(1.4rem, 3vw, 2rem) !important;
+    }}
+    
+    h4 {{
+        font-size: clamp(1.1rem, 2.5vw, 1.4rem) !important;
+    }}
+
+    /* === BUTTONS === */
+    .stButton>button {{ 
+        background: linear-gradient(135deg, {theme['primary']} 0%, {theme['accent']} 100%) !important;
+        color: {card_bg} !important;
+        font-weight: bold !important;
+        width: 100% !important;
+        padding: 14px 20px !important;
+        border: 2px solid {theme['accent']} !important;
+        border-radius: 8px !important;
+        height: auto !important;
+        min-height: 50px !important;
+        font-size: 16px !important;
+        cursor: pointer !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    }}
+    
+    .stButton>button:hover {{ 
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 20px rgba(197,160,89,0.4) !important;
+        border-color: {theme['accent2']} !important;
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['primary']} 100%) !important;
+    }}
+    
+    .stButton>button:active {{
+        transform: translateY(0) !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    }}
+
+    /* === RESULT BOX === */
+    .result-box {{ 
+        background: {card_bg} !important;
+        padding: 28px !important;
+        border-radius: 14px !important;
+        border-left: 12px solid {theme['accent']} !important;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.12) !important;
+        color: {text_primary} !important;
+        font-size: 17px;
+        line-height: 1.8;
+        margin-bottom: 20px;
+        animation: fadeInUp 0.6s ease-out;
+    }}
+    
+    @keyframes fadeInUp {{
+        from {{
+            opacity: 0;
+            transform: translateY(30px);
+        }}
+        to {{
+            opacity: 1;
+            transform: translateY(0);
+        }}
+    }}
+
+    /* === FORM INPUTS === */
+    .stTextInput>div>div>input,
+    .stTextArea textarea {{
+        background-color: {bg_secondary} !important;
+        color: {text_primary} !important;
+        border: 2px solid {theme['accent']} !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
+        font-family: 'Courier New', monospace !important;
+        transition: all 0.3s ease !important;
+        font-size: 15px !important;
+    }}
+    
+    .stTextInput>div>div>input:focus,
+    .stTextArea textarea:focus {{
+        border-color: {theme['accent2']} !important;
+        box-shadow: 0 0 0 3px rgba(197,160,89,0.2) !important;
+        outline: none !important;
+    }}
+
+    /* === CHAT BUBBLES === */
+    .chat-user {{
+        background: linear-gradient(135deg, {bg_secondary} 0%, {card_bg} 100%);
+        color: {text_primary} !important;
+        padding: 16px 20px;
+        border-radius: 18px 18px 4px 18px;
+        border-left: 5px solid {theme['primary']};
+        margin-bottom: 12px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        animation: slideInLeft 0.4s ease-out;
+    }}
+    
+    .chat-ai {{
+        background: linear-gradient(135deg, {card_bg} 0%, {bg_secondary} 100%);
+        color: {text_primary} !important;
+        padding: 16px 20px;
+        border-radius: 18px 18px 18px 4px;
+        border-left: 5px solid {theme['accent']};
+        margin-bottom: 16px;
+        box-shadow: 0 3px 12px rgba(197,160,89,0.15);
+        animation: slideInRight 0.4s ease-out;
+    }}
+    
+    @keyframes slideInLeft {{
+        from {{ opacity: 0; transform: translateX(-20px); }}
+        to {{ opacity: 1; transform: translateX(0); }}
+    }}
+    
+    @keyframes slideInRight {{
+        from {{ opacity: 0; transform: translateX(20px); }}
+        to {{ opacity: 1; transform: translateX(0); }}
+    }}
+
+    /* === SIDEBAR === */
+    section[data-testid='stSidebar'] {{
+        background: linear-gradient(180deg, {theme['primary']} 0%, #1a2332 100%) !important;
+        border-right: 3px solid {theme['accent']} !important;
+    }}
+    
+    section[data-testid='stSidebar'] .stMarkdown {{
+        color: #fdfaf1 !important;
+    }}
+    
+    section[data-testid='stSidebar'] [data-testid='stMetricValue'] {{
+        color: {theme['accent']} !important;
+        font-size: 24px !important;
+        font-weight: bold !important;
+    }}
+
+    /* === IMAGE MAGNIFIER === */
+    .magnifier-container {{
+        overflow: hidden;
+        border: 3px solid {theme['accent']};
+        border-radius: 12px;
+        cursor: zoom-in;
+        background: white;
+        padding: 8px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        position: relative;
+    }}
+    
+    .magnifier-container:hover {{
+        box-shadow: 0 8px 25px rgba(197,160,89,0.3);
+        border-color: {theme['accent2']};
+    }}
+    
+    .magnifier-container img {{
+        transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }}
+    
+    .magnifier-container img:hover {{
+        transform: scale(1.3);
+    }}
+
+    /* === ZOOM MODAL === */
+    .modal {{
+        display: none;
+        position: fixed;
+        z-index: 99999;
+        padding-top: 50px;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.95);
+        animation: fadeIn 0.3s;
+    }}
+    
+    .modal-content {{
+        margin: auto;
+        display: block;
+        width: 90%;
+        max-width: 1400px;
+        animation: zoomIn 0.3s;
+    }}
+    
+    @keyframes fadeIn {{
+        from {{ opacity: 0; }}
+        to {{ opacity: 1; }}
+    }}
+    
+    @keyframes zoomIn {{
+        from {{ transform: scale(0.7); opacity: 0; }}
+        to {{ transform: scale(1); opacity: 1; }}
+    }}
+    
+    .modal-close {{
+        position: absolute;
+        top: 20px;
+        right: 40px;
+        color: #f1f1f1;
+        font-size: 50px;
+        font-weight: bold;
+        transition: 0.3s;
+        cursor: pointer;
+        z-index: 100000;
+    }}
+    
+    .modal-close:hover,
+    .modal-close:focus {{
+        color: {theme['accent']};
+    }}
+
+    /* === CITATION BOX === */
+    .citation-box {{
+        font-size: 13px;
+        color: {text_secondary};
+        background: linear-gradient(135deg, {bg_secondary} 0%, {card_bg} 100%);
+        padding: 14px 18px;
+        border-radius: 10px;
+        border: 1px dashed {theme['accent']};
+        margin-top: 18px;
+        font-style: italic;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }}
+
+    /* === FILE UPLOADER === */
+    [data-testid='stFileUploader'] {{
+        background: {card_bg};
+        border: 3px dashed {theme['accent']};
+        border-radius: 12px;
+        padding: 30px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }}
+    
+    [data-testid='stFileUploader']:hover {{
+        border-color: {theme['accent2']};
+        background: {bg_secondary};
+        box-shadow: 0 5px 15px rgba(197,160,89,0.1);
+    }}
+
+    /* === DIVIDER === */
+    hr {{
+        border: none;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, {theme['accent']}, transparent);
+        margin: 30px 0;
+    }}
+
+    /* === EMPTY STATE === */
+    .empty-state {{
+        text-align: center;
+        padding: 60px 20px;
+        background: {card_bg};
+        border-radius: 16px;
+        border: 3px dashed {theme['accent']};
+        margin: 40px 0;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+    }}
+    
+    .empty-state h3 {{
+        color: {theme['primary']};
+        border: none;
+        margin-bottom: 10px;
+    }}
+
+    /* === LOGIN CARD === */
+    .login-card {{
+        background: {card_bg};
+        padding: 50px 40px;
+        border-radius: 20px;
+        box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+        border: 2px solid {theme['accent']};
+        animation: fadeInUp 0.6s ease-out;
+    }}
+    
+    .hero-title {{
+        font-size: clamp(2rem, 5vw, 3rem);
+        color: {theme['primary']};
+        margin-bottom: 15px;
+        font-weight: bold;
+        text-align: center;
+    }}
+    
+    .hero-subtitle {{
+        font-size: clamp(1rem, 2vw, 1.2rem);
+        color: {text_secondary};
+        text-align: center;
+        margin-bottom: 30px;
+        line-height: 1.6;
+    }}
+
+    /* === CREDIT PROGRESS BAR === */
+    .credit-bar-container {{
+        background: rgba(255,255,255,0.1);
+        border-radius: 10px;
+        padding: 4px;
+        margin: 15px 0;
+        border: 1px solid {theme['accent']};
+    }}
+    
+    .credit-bar {{
+        height: 10px;
+        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']});
+        border-radius: 8px;
+        transition: width 0.5s ease;
+        box-shadow: 0 0 10px rgba(197,160,89,0.5);
+    }}
+
+    /* === SECTION HEADER === */
+    .section-header {{
+        color: {theme['accent']} !important;
+        font-size: 16px;
+        font-weight: bold;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid rgba(197,160,89,0.3);
+    }}
+
+    /* === MOBILE NAV BUTTONS === */
+    .mobile-nav {{
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: {theme['primary']};
+        padding: 10px 20px;
+        border-radius: 50px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    }}
+    
+    .mobile-nav button {{
+        background: {theme['accent']};
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        margin: 0 5px;
+        border-radius: 20px;
+        font-size: 18px;
+        cursor: pointer;
+    }}
+
+    /* === RESPONSIVE === */
+    @media (max-width: 768px) {{
+        .main {{
+            padding: 1rem 0.5rem;
+        }}
+        
+        h1 {{
+            font-size: 1.5rem !important;
+        }}
+        
+        .result-box {{
+            padding: 20px !important;
+            font-size: 15px !important;
+        }}
+        
+        .stButton>button {{
+            font-size: 14px !important;
+            padding: 12px 16px !important;
+        }}
+        
+        .login-card {{
+            padding: 30px 20px;
+        }}
+        
+        .mobile-nav {{
+            display: block;
+        }}
+    }}
+    </style>
+
+    <script>
+    // === KEYBOARD SHORTCUTS ===
+    document.addEventListener('keydown', function(e) {{
+        // Esc - Close modal
+        if (e.key === 'Escape') {{
+            const modal = document.getElementById('imageModal');
+            if (modal) modal.style.display = 'none';
+        }}
+        
+        // Ctrl+Enter - Trigger analysis
+        if (e.ctrlKey && e.key === 'Enter') {{
+            e.preventDefault();
+            const analysisBtn = Array.from(document.querySelectorAll('.stButton button'))
+                .find(btn => btn.textContent.includes('AKADEMIK TAHLILNI BOSHLASH'));
+            if (analysisBtn) analysisBtn.click();
+        }}
+        
+        // Ctrl+S - Trigger download
+        if (e.ctrlKey && e.key === 's') {{
+            e.preventDefault();
+            const downloadBtn = document.querySelector('[data-testid="stDownloadButton"]');
+            if (downloadBtn) downloadBtn.click();
+        }}
+    }});
+
+    // === IMAGE MODAL ===
+    function setupModal() {{
+        const images = document.querySelectorAll('.magnifier-container img');
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        const closeBtn = document.querySelector('.modal-close');
+        
+        images.forEach(img => {{
+            img.onclick = function() {{
+                if (modal && modalImg) {{
+                    modal.style.display = "block";
+                    modalImg.src = this.src;
+                }}
+            }}
+        }});
+        
+        if (closeBtn) {{
+            closeBtn.onclick = function() {{
+                modal.style.display = "none";
+            }}
+        }}
+        
+        if (modal) {{
+            modal.onclick = function(e) {{
+                if (e.target === modal) {{
+                    modal.style.display = "none";
+                }}
+            }}
+        }}
+    }}
+
+    // === MOBILE SWIPE GESTURES ===
+    let touchstartX = 0;
+    let touchendX = 0;
+    
+    document.addEventListener('touchstart', e => {{
+        touchstartX = e.changedTouches[0].screenX;
+    }});
+    
+    document.addEventListener('touchend', e => {{
+        touchendX = e.changedTouches[0].screenX;
+        handleSwipe();
+    }});
+    
+    function handleSwipe() {{
+        const threshold = 100;
+        if (touchendX < touchstartX - threshold) {{
+            // Swipe left - next page
+            const nextBtn = document.getElementById('mobileNext');
+            if (nextBtn) nextBtn.click();
+        }}
+        if (touchendX > touchstartX + threshold) {{
+            // Swipe right - previous page
+            const prevBtn = document.getElementById('mobilePrev');
+            if (prevBtn) prevBtn.click();
+        }}
+    }}
+
+    // Run after Streamlit renders
+    setTimeout(setupModal, 1000);
+    setInterval(setupModal, 2000); // Refresh for dynamic content
+    </script>
+
+    <!-- Modal HTML -->
+    <div id="imageModal" class="modal">
+        <span class="modal-close">&times;</span>
+        <img class="modal-content" id="modalImage">
+    </div>
+""", unsafe_allow_html=True)
+
+# --- 2. CORE SERVICES (SUPABASE & AI) ---
 try:
     db = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    CORRECT_PASSWORD = st.secrets.get("APP_PASSWORD", "")
+    CORRECT_PASSWORD = st.secrets["APP_PASSWORD"]
     GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
-    # Optional text providers (for demo, to reduce Gemini calls)
-    CF_ACCOUNT_ID = st.secrets.get("CF_ACCOUNT_ID", "")
-    CF_API_TOKEN = st.secrets.get("CF_API_TOKEN", "")
-    CF_TEXT_MODEL = st.secrets.get("CF_TEXT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
-    DEFAULT_TEXT_PROVIDER = st.secrets.get("DEFAULT_TEXT_PROVIDER", "cloudflare").lower()
-    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
-except Exception:
-    st.error("Secrets sozlanmagan! (SUPABASE_URL/SUPABASE_KEY/GEMINI_API_KEY)")
+except:
+    st.error("Secrets sozlanmagan!")
     st.stop()
 
-# =========================
-# DEMO MODE (Pitch)
-# =========================
+# ==========================================
+# DEMO MODE (PITCH / TANLOV UCHUN)
+# ==========================================
+# Eslatma:
+# - DEMO_MODE=True bo'lsa, tizimga kirishda parol so'ralmaydi (faqat email).
+# - Yangi foydalanuvchi birinchi kirishda avtomatik 50 kredit bilan yaratiladi.
 DEMO_MODE = True
 DEFAULT_DEMO_CREDITS = 50
 
 def ensure_demo_user(email: str) -> None:
+    """Agar foydalanuvchi mavjud bo'lmasa, uni demo krediti bilan yaratadi.
+
+    Muhim:
+    - Faqat tanlov/pitch jarayonida qulaylik uchun.
+    - Jadval sxemasi noma'lum bo'lgani uchun minimal fieldlar bilan insert qilinadi.
+    """
     try:
+        # Avval mavjudligini tekshiramiz
         res = db.table("profiles").select("email").eq("email", email).execute()
         if not res.data:
-            db.table("profiles").insert({"email": email, "credits": DEFAULT_DEMO_CREDITS}).execute()
+            db.table("profiles").insert({
+                "email": email,
+                "credits": DEFAULT_DEMO_CREDITS,
+            }).execute()
     except Exception:
+        # Demo rejimda login to'xtab qolmasligi uchun xatoni yumshoq usulda yutamiz.
+        # Kreditlar baribir 0 bo'lib qolishi mumkin (bazaga yozilmasa).
         pass
 
-def fetch_live_credits(email: str) -> int:
-    try:
-        res = db.table("profiles").select("credits").eq("email", email).single().execute()
-        return int(res.data["credits"]) if res.data else 0
-    except Exception:
-        return 0
+if not st.session_state.auth:
+    # === ENHANCED LOGIN PAGE ===
+    st.markdown("<br>", unsafe_allow_html=True)
+    _, col_mid, _ = st.columns([1, 2, 1])
+    with col_mid:
+        st.markdown(f"""
+            <div class='login-card'>
+                <div class='hero-title'>🏛 Manuscript AI</div>
+                <div class='hero-subtitle'>
+                    Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya 
+                    qilish uchun sun'iy intellekt asosidagi platforma
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<h2 style='margin-top:30px;'>🔐 Tizimga Kirish</h2>", unsafe_allow_html=True)
+        
+        email_in = st.text_input("📧 Email manzili", placeholder="example@domain.com")
 
-def use_credit_atomic(email: str, count: int = 1) -> bool:
-    curr = fetch_live_credits(email)
-    if curr >= count:
-        db.table("profiles").update({"credits": curr - count}).eq("email", email).execute()
-        return True
-    return False
+        # DEMO_MODE=True bo'lsa, parol maydoni ko'rsatilmaydi (pitch/tanlov uchun qulay).
+        if not DEMO_MODE:
+            pwd_in = st.text_input("🔑 Parol", type="password", placeholder="Parolingizni kiriting")
 
+        st.markdown("<br>", unsafe_allow_html=True)
 
-# =========================
-# SESSION STATE
-# =========================
-def ss_init():
-    defaults = {
-        "auth": False,
-        "u_email": "",
-        "sources": [],          # list of dict: {id,name,type,pages,chunks,selected}
-        "active_source_ids": set(),
-        "chat": [],             # list of dict: {role, content, citations}
-        "last_retrieval": [],   # list of chunk dicts
-        "studio_output": {"summary": "", "flashcards": [], "quiz": []},
-        "ui_notice": "",
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+        if st.button("✨ TIZIMGA KIRISH"):
+            if not email_in:
+                st.warning("⚠️ Iltimos, email manzilini kiriting")
+            elif DEMO_MODE:
+                st.session_state.auth = True
+                st.session_state.u_email = email_in.strip().lower()
+                ensure_demo_user(st.session_state.u_email)
+                st.toast("✅ Demo rejimda tizimga kirdingiz!", icon="🎉")
+                st.rerun()
+            else:
+                if pwd_in == CORRECT_PASSWORD:
+                    st.session_state.auth = True
+                    st.session_state.u_email = email_in.strip().lower()
+                    st.toast("✅ Muvaffaqiyatli kirdingiz!", icon="🎉")
+                    st.rerun()
+                else:
+                    st.error("❌ Parol noto'g'ri! Iltimos, qaytadan urinib ko'ring.")
+    st.stop()
 
-ss_init()
-
-
-# =========================
-# GEMINI (UNCHANGED MODEL NAME)
-# =========================
+# --- AI ENGINE (UNCHANGED - DO NOT MODIFY) ---
 genai.configure(api_key=GEMINI_KEY)
-system_instruction = (
-    "You are Manuscript AI Studio assistant. "
-    "You must be grounded in the provided sources. "
-    "If the answer is not in sources, say so."
-)
-
+system_instruction = "Siz Manuscript AI mutaxassisiz. Tadqiqotchi d87809889-dot muallifligida ilmiy tahlillar qilasiz."
 safety_settings = {
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
 }
-
 model = genai.GenerativeModel(
     model_name="gemini-flash-latest",
     system_instruction=system_instruction,
     safety_settings=safety_settings
 )
 
+# ==========================================
+# 3. YORDAMCHI FUNKSIYALAR (UNCHANGED)
+# ==========================================
+def enhance_image_for_ai(img: Image.Image):
+    """Rasmni AI tahlili uchun optimallashtirish (XATO TUZATILDI)"""
+    img = ImageOps.grayscale(img)
+    img = ImageOps.autocontrast(img, cutoff=1)
+    img = ImageEnhance.Contrast(img).enhance(2.8)
+    img = ImageEnhance.Sharpness(img).enhance(2.5)
+    return img
 
-# =========================
-# NOTEBOOKLM DARK-GRAY CSS
-# =========================
-st.markdown("""
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-<style>
-html, body, [class*="css"]  { font-family: 'Segoe UI', 'Roboto', Arial, sans-serif; }
-.stApp { background: linear-gradient(135deg, #232526 0%, #414345 100%); color: #e8eaed; }
-header[data-testid="stHeader"] { background: rgba(0,0,0,0) !important; }
-footer { visibility: hidden; }
-#stDecoration { display:none; }
-.stAppDeployButton { display:none; }
+def img_to_png_payload(img: Image.Image):
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    return {"mime_type": "image/png", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
-/* --- Layout containers --- */
-.nlm-shell {
-    display: block;
-    padding: 10px 6px 0 6px;
-}
-.nlm-topbar {
-    display:flex; align-items:center; justify-content:space-between;
-    gap:12px; padding: 6px 10px 14px 10px;
-    background: rgba(34,37,41,0.95);
-    border-radius: 16px;
-    box-shadow: 0 2px 12px rgba(34,37,41,0.12);
-}
-.nlm-brand {
-    font-weight: 700; letter-spacing: 0.2px; font-size: 20px;
-    color:#e8eaed; display:flex; gap:10px; align-items:center;
-}
-.nlm-brand .fa-book {
-    color: #8f94fb;
-    font-size: 1.5em;
-}
-.nlm-pill {
-    font-size: 13px; color:#c7c9cc; padding: 5px 14px;
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 999px; background: rgba(255,255,255,0.07);
-    margin-left: 8px;
-}
-.nlm-avatar {
-    width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg,#8f94fb 0%,#4e54c8 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1em; margin-right: 10px; border: 2px solid #fff2; box-shadow: 0 2px 8px #8f94fb33;
-}
-.nlm-grid {
-    display:grid;
-    grid-template-columns: 1.05fr 1.6fr 1.05fr;
-    gap: 16px;
-    align-items: start;
-}
+def fetch_live_credits(email: str):
+    try:
+        res = db.table("profiles").select("credits").eq("email", email).single().execute()
+        return res.data["credits"] if res.data else 0
+    except:
+        return 0
 
-/* --- Panels --- */
-.nlm-panel {
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.13);
-    border-radius: 18px;
-    padding: 18px 16px 16px 16px;
-    box-shadow: 0 8px 32px rgba(34,37,41,0.18);
-    margin-bottom: 8px;
-    transition: box-shadow 0.2s;
-}
-.nlm-panel:hover {
-    box-shadow: 0 12px 40px rgba(143,148,251,0.18);
-}
-.nlm-panel h3{
-    margin: 0 0 10px 0; padding: 0;
-    font-size: 15px; font-weight: 700; color:#8f94fb;
-    border: none !important; text-align:left !important;
-    display: flex; align-items: center; gap: 8px;
-}
-.nlm-panel h3 .fa { color: #8f94fb; }
-.nlm-sub {
-    color:#aab0b6; font-size: 13px; margin-top:-4px; margin-bottom: 10px;
-}
-.nlm-divider {
-    height:1px; background: rgba(255,255,255,0.10);
-    margin: 12px 0;
-}
+def use_credit_atomic(email: str, count: int = 1):
+    curr = fetch_live_credits(email)
+    if curr >= count:
+        db.table("profiles").update({"credits": curr - count}).eq("email", email).execute()
+        return True
+    return False
 
-/* --- Buttons --- */
-.stButton>button {
-    background: linear-gradient(90deg, #4e54c8 0%, #8f94fb 100%) !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 14px !important;
-    padding: 12px 20px !important;
-    font-weight: 600 !important;
-    box-shadow: 0 2px 8px rgba(78,84,200,0.15);
-    transition: 0.2s;
-}
-.stButton>button:hover{
-    background: linear-gradient(90deg, #8f94fb 0%, #4e54c8 100%) !important;
-    box-shadow: 0 4px 16px rgba(78,84,200,0.25);
-}
-.small-btn .stButton>button{
-    padding: 8px 10px !important;
-    border-radius: 10px !important;
-    font-size: 12px !important;
-}
+@st.cache_data(show_spinner=False)
+def render_page(file_content, page_idx, scale, is_pdf):
+    try:
+        if is_pdf:
+            pdf = pdfium.PdfDocument(file_content)
+            img = pdf[page_idx].render(scale=scale).to_pil()
+            pdf.close()
+            return img
+        return Image.open(io.BytesIO(file_content))
+    except:
+        return None
 
-/* --- Inputs --- */
-.stTextInput input, .stTextArea textarea {
-    background: rgba(255,255,255,0.08) !important;
-    color: #e8eaed !important;
-    border-radius: 10px !important;
-    border: 1px solid #4e54c8 !important;
-}
-.stTextInput input:focus, .stTextArea textarea:focus{
-    border-color: #8f94fb !important;
-    box-shadow: 0 0 0 2px #8f94fb33 !important;
-}
+# ==========================================
+# UI CONSTANTS (DEMO METRICS - NOT LIVE DATA)
+# ==========================================
+# NOTE: These are placeholder values for demo purposes
+DEMO_MANUSCRIPTS_ANALYZED = 2840
+DEMO_LANGUAGES_SUPPORTED = 12
+DEMO_AVG_TIME_MINUTES = 2.5
+DEMO_ACCURACY_RATE = 92.1
+DEMO_ACTIVE_USERS = 180
+DEMO_COUNTRIES = 4
 
-/* --- Chip style --- */
-.nlm-chip {
-    display:inline-block;
-    font-size: 12px; color:#c7c9cc;
-    padding: 5px 10px;
-    border: 1px solid rgba(255,255,255,0.13);
-    border-radius: 999px;
-    background: rgba(0,0,0,0.22);
-    margin-right:8px; margin-top:8px;
-}
-.nlm-cite {
-    display:inline-block;
-    font-size: 12px; color:#c7c9cc;
-    padding: 4px 10px;
-    border: 1px dashed rgba(255,255,255,0.18);
-    border-radius: 999px;
-    background: rgba(255,255,255,0.07);
-    margin-right:8px; margin-top:8px;
-}
-
-/* --- Chat bubbles --- */
-.msg-user {
-    background: rgba(255,255,255,0.10);
-    border: 1px solid rgba(255,255,255,0.13);
-    padding: 12px 16px; border-radius: 16px;
-    margin-bottom: 12px;
-    box-shadow: 0 2px 8px rgba(143,148,251,0.10);
-}
-.msg-ai {
-    background: rgba(143,148,251,0.10);
-    border: 1px solid rgba(143,148,251,0.18);
-    padding: 12px 16px; border-radius: 16px;
-    margin-bottom: 14px;
-    box-shadow: 0 2px 8px rgba(143,148,251,0.10);
-}
-.msg-h {
-    font-size: 13px; font-weight: 700; color:#8f94fb;
-    margin-bottom: 6px;
-}
-.msg-t {
-    font-size: 14px; line-height: 1.6; color:#e8eaed;
-    white-space: pre-wrap;
-}
-
-/* --- Animated spinner --- */
-.fa-spinner { animation: spin 1.2s linear infinite; }
-@keyframes spin { 100% { transform: rotate(360deg); } }
-
-/* --- Responsive --- */
-@media (max-width: 1000px){
-    .nlm-grid{ grid-template-columns: 1fr; }
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# =========================
-# LOGIN (keep simple)
-# =========================
-if not st.session_state.auth:
-    st.markdown("<div class='nlm-shell'>", unsafe_allow_html=True)
-    st.markdown("""
-      <div class="nlm-topbar">
-        <div class="nlm-brand">📓 Manuscript AI Studio <span class="nlm-pill">NotebookLM-style MVP</span></div>
-      </div>
+# ==========================================
+# LANDING PAGE FUNCTION (UI ONLY)
+# ==========================================
+def render_landing_page():
+    """Render professional landing page for Hult Prize judges"""
+    
+    # Hero Section
+    st.markdown(f"""
+        <div style='text-align:center; padding:60px 20px; background:{card_bg}; 
+                    border-radius:20px; box-shadow:0 10px 40px rgba(0,0,0,0.15); margin-bottom:40px;'>
+            <h1 style='font-size:clamp(2.5rem, 6vw, 4rem); margin-bottom:20px; border:none; color:{theme['primary']};'>
+                🏛 Manuscript AI
+            </h1>
+            <p style='font-size:clamp(1.2rem, 3vw, 1.8rem); color:{text_secondary}; margin-bottom:30px; line-height:1.6;'>
+                Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya qilish uchun<br>
+                sun'iy intellekt asosidagi akademik platforma
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # CTA Buttons
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        col_demo, col_learn = st.columns(2)
+        with col_demo:
+            if st.button("▶ DEMO'NI BOSHLASH", key="try_demo_btn", use_container_width=True):
+                st.session_state.show_landing = False
+                st.rerun()
+        with col_learn:
+            if st.button("📖 Batafsil Ma'lumot", key="learn_more_btn", use_container_width=True):
+                st.session_state.show_landing = False
+                st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Three-column layout for Problem/Solution/Impact
+    col1, col2, col3 = st.columns(3)
+    
+    # PROBLEM Section
+    with col1:
+        st.markdown(f"""
+            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
+                        border-left:8px solid #e74c3c; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
+                <h2 style='color:#e74c3c; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
+                    📊 MUAMMO
+                </h2>
+                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>100M+</span><br>
+                        <span style='color:{text_secondary};'>qo'lyozmalar arxivda</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>99%</span><br>
+                        <span style='color:{text_secondary};'>raqamli emas</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>$500-1000</span><br>
+                        <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>2-3 hafta</span><br>
+                        <span style='color:{text_secondary};'>manual tahlil vaqti</span>
+                    </li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # SOLUTION Section
+    with col2:
+        st.markdown(f"""
+            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
+                        border-left:8px solid #3498db; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
+                <h2 style='color:#3498db; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
+                    ✨ YECHIM
+                </h2>
+                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>AI-powered</span><br>
+                        <span style='color:{text_secondary};'>OCR va tahlil</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>2 daqiqa</span><br>
+                        <span style='color:{text_secondary};'>tahlil vaqti</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>95%</span><br>
+                        <span style='color:{text_secondary};'>aniqlik darajasi</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>$5-10</span><br>
+                        <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
+                    </li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # IMPACT Section
+    with col3:
+        st.markdown(f"""
+            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
+                        border-left:8px solid #2ecc71; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
+                <h2 style='color:#2ecc71; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
+                    📈 TA'SIR
+                </h2>
+                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_MANUSCRIPTS_ANALYZED:,}</span><br>
+                        <span style='color:{text_secondary};'>tahlil qilingan</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_LANGUAGES_SUPPORTED}</span><br>
+                        <span style='color:{text_secondary};'>til qo'llab-quvvatlash</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_COUNTRIES}</span><br>
+                        <span style='color:{text_secondary};'>mamlakatda foydalanilmoqda</span>
+                    </li>
+                    <li style='margin-bottom:15px;'>
+                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_ACTIVE_USERS:,}</span><br>
+                        <span style='color:{text_secondary};'>faol foydalanuvchi</span>
+                    </li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # How it Works Section (Expandable)
+    with st.expander("📖 QANDAY ISHLAYDI?", expanded=False):
+        st.markdown(f"""
+            <div style='padding:20px; color:{text_primary};'>
+                <h3 style='color:{theme['accent']}; border:none;'>4 Oddiy Qadam:</h3>
+                <ol style='font-size:1.1rem; line-height:2;'>
+                    <li><b>Yuklash</b> - PDF, PNG, JPG formatidagi qo'lyozma faylini yuklang</li>
+                    <li><b>Sozlash</b> - Til, xat turi va rasm sozlamalarini tanlang</li>
+                    <li><b>Tahlil</b> - AI 2 daqiqada transliteratsiya va tarjima qiladi</li>
+                    <li><b>Export</b> - Natijalarni DOCX, TXT yoki JSON formatida yuklab oling</li>
+                </ol>
+                <p style='margin-top:20px; font-size:1rem; color:{text_secondary};'>
+                    <i>💡 Maslahat: Demo'ni sinab ko'rish uchun yuqoridagi "Demo'ni Boshlash" tugmasini bosing</i>
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Footer note
+    st.markdown(f"""
+        <div style='text-align:center; margin-top:60px; padding:30px; background:{bg_secondary}; border-radius:10px;'>
+            <p style='color:{text_secondary}; font-size:0.9rem; margin:0;'>
+                📊 Ko'rsatilgan statistik ma'lumotlar demo maqsadida keltirilgan<br>
+                🔬 Tadqiqot: d87809889-dot | 📧 Aloqa uchun: {st.session_state.u_email}
+            </p>
+        </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div class='nlm-panel' style='max-width:520px;margin:0 auto;'>", unsafe_allow_html=True)
-    st.markdown("<h3>Login</h3><div class='nlm-sub'>Demo rejim: email bilan kirish</div>", unsafe_allow_html=True)
-
-    email_in = st.text_input("Email", placeholder="example@domain.com")
-
-    if not DEMO_MODE:
-        pwd_in = st.text_input("Parol", type="password", placeholder="Parol")
-
-    if st.button("Kirish"):
-        if not email_in:
-            st.warning("Email kiriting.")
-        elif DEMO_MODE:
-            st.session_state.auth = True
-            st.session_state.u_email = email_in.strip().lower()
-            ensure_demo_user(st.session_state.u_email)
+# ==========================================
+# 4. TADQIQOT INTERFEYSI
+# ==========================================
+with st.sidebar:
+    st.markdown(f"<h2 style='color:{theme['accent']}; text-align:center; border:none;'>📜 Manuscript AI</h2>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center; color:#fdfaf1; font-size:14px;'>👤 <b>{st.session_state.u_email}</b></p>", unsafe_allow_html=True)
+    
+    current_credits = fetch_live_credits(st.session_state.u_email)
+    
+    # Enhanced credit display with progress bar
+    st.metric("💳 Mavjud Kredit", f"{current_credits} sahifa")
+    credit_percent = min((current_credits / 100) * 100, 100) if current_credits <= 100 else 100
+    st.markdown(f"""
+        <div class='credit-bar-container'>
+            <div class='credit-bar' style='width:{credit_percent}%'></div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # === DARK MODE TOGGLE ===
+    st.markdown("<p class='section-header'>🎨 Dizayn Sozlamalari</p>", unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.write("🌙 Tungi Rejim" if not st.session_state.dark_mode else "☀️ Kunduzgi Rejim")
+    with col2:
+        if st.button("🔄", key="dark_toggle"):
+            st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
-        else:
-            if pwd_in == CORRECT_PASSWORD:
-                st.session_state.auth = True
-                st.session_state.u_email = email_in.strip().lower()
-                st.rerun()
-            else:
-                st.error("Parol noto‘g‘ri.")
+    
+    # === COLOR THEME SELECTOR ===
+    new_theme = st.selectbox("Rang Sxemasi", list(THEMES.keys()), key="theme_select")
+    if new_theme != st.session_state.theme:
+        st.session_state.theme = new_theme
+        st.rerun()
+    
+    st.divider()
+    
+    # Section: Til va Xat
+    st.markdown(f"<p class='section-header'>🌍 Til va Xat Tanlash</p>", unsafe_allow_html=True)
+    lang = st.selectbox("Qo'lyozma tili", ["Chig'atoy", "Forscha", "Arabcha", "Eski Turkiy"])
+    era = st.selectbox("Xat turi", ["Nasta'liq", "Suls", "Riq'a", "Kufiy", "Noma'lum"])
+    
+    st.divider()
+    
+    # Section: Rasm Sozlamalari
+    st.markdown(f"<p class='section-header'>🎨 Rasm Sozlamalari</p>", unsafe_allow_html=True)
+    br = st.slider("☀️ Yorqinlik", 0.5, 2.0, 1.0, 0.1)
+    ct = st.slider("🎭 Kontrast", 0.5, 3.0, 1.3, 0.1)
+    rot = st.select_slider("🔄 Aylantirish", options=[0, 90, 180, 270], value=0)
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.divider()
+    
+    # === COMPARE MODE ===
+    st.markdown(f"<p class='section-header'>🔄 Maxsus Rejimlar</p>", unsafe_allow_html=True)
+    st.session_state.compare_mode = st.checkbox("🔄 Solishtirish Rejimi", value=st.session_state.compare_mode)
+    
+    st.divider()
+    
+    # === HISTORY SIDEBAR ===
+    if st.session_state.history:
+        with st.expander("📜 Tarix (Oxirgi 10 ta)"):
+            for h in st.session_state.history[-10:][::-1]:
+                if st.button(f"{h['date']} - {h['filename'][:25]}...", key=f"hist_{h['id']}"):
+                    st.session_state.results = h['results']
+                    st.session_state.chats = h.get('chats', {})
+                    st.toast(f"✅ {h['filename']} yuklandi!", icon="📂")
+                    st.rerun()
+    
+    st.divider()
+    
+    # KEYBOARD SHORTCUTS INFO
+    with st.expander("⌨️ Klaviatura Yorliqlari"):
+        st.markdown("""
+            - **Esc** - Modal yopish
+            - **Ctrl+Enter** - Tahlilni boshlash
+            - **Ctrl+S** - Faylni saqlash
+        """)
+    
+    st.divider()
+    
+    if st.button("🚪 TIZIMDAN CHIQISH"):
+        st.session_state.auth = False
+        st.toast("👋 Xayr!", icon="👋")
+        st.rerun()
+    
+    # Back to Landing button
+    if not st.session_state.show_landing:
+        if st.button("🏠 Bosh Sahifaga Qaytish", key="back_to_landing"):
+            st.session_state.show_landing = True
+            st.rerun()
+
+# === LANDING PAGE OR MAIN APP ===
+if st.session_state.show_landing:
+    render_landing_page()
     st.stop()
 
+# === MAIN CONTENT AREA ===
+st.markdown("<h1>📜 Raqamli Qo'lyozmalar Ekspertizasi</h1>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center; color:{text_secondary}; font-size:18px; margin-bottom:30px;'>Sun'iy intellekt yordamida qadimiy matnlarni tahlil qiling va transliteratsiya qiling</p>", unsafe_allow_html=True)
 
-# =========================
-# HELPERS: PDF text extract + chunk + retrieval
-# =========================
-def normalize_ws(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "")).strip()
+file = st.file_uploader("📤 Qo'lyozma faylini yuklang", type=["pdf", "png", "jpg", "jpeg"], label_visibility="visible")
 
-def chunk_text(text: str, chunk_chars: int = 1000, overlap: int = 120):
-    text = normalize_ws(text)
-    if not text:
-        return []
-    chunks = []
-    i = 0
-    n = len(text)
-    while i < n:
-        j = min(i + chunk_chars, n)
-        chunk = text[i:j]
-        chunks.append(chunk)
-        if j == n:
-            break
-        i = max(0, j - overlap)
-    return chunks
-
-def extract_pdf_text_pages(pdf_bytes: bytes, max_pages: int = 30):
-    pages = []
-    try:
-        pdf = pdfium.PdfDocument(pdf_bytes)
-        total = min(len(pdf), max_pages)
-        for i in range(total):
-            page = pdf[i]
-            txt = ""
-            try:
-                # pypdfium2 text extraction
-                textpage = page.get_textpage()
-                txt = textpage.get_text_range()
-            except Exception:
-                txt = ""
-            pages.append(txt or "")
-        pdf.close()
-    except Exception:
-        return []
-    return pages
-
-def simple_retrieve(question: str, sources, active_ids, top_k: int = 8):
-    """Fuzzy retrieval: keyword overlap + Levenshtein/qisman moslik."""
-    import difflib
-    try:
-        from Levenshtein import distance as lev_distance
-    except ImportError:
-        lev_distance = None
-
-    q = normalize_ws(question).lower()
-    if not q:
-        return []
-    q_terms = set([t for t in re.findall(r"[a-zA-Z\u0400-\u04FF\u0600-\u06FF0-9']+", q) if len(t) > 2])
-
-    pool = []
-    for s in sources:
-        if s["id"] not in active_ids:
-            continue
-        for ch in s["chunks"]:
-            txt = ch["text"].lower()
-            # 1. Keyword overlap
-            overlap_score = sum(1 for t in q_terms if t in txt)
-            # 2. Fuzzy ratio (difflib)
-            fuzzy_score = difflib.SequenceMatcher(None, q, txt[:min(300, len(txt))]).ratio()
-            # 3. Levenshtein distance (if available)
-            lev_score = 0
-            if lev_distance:
-                lev = lev_distance(q, txt[:min(300, len(txt))])
-                lev_score = max(0, 1 - lev / max(len(q), 1))
-            # Combined score
-            score = overlap_score + fuzzy_score * 2 + lev_score
-            if score > 0.2:
-                pool.append((score, s, ch))
-
-    pool.sort(key=lambda x: x[0], reverse=True)
-    picked = []
-    for score, s, ch in pool[:top_k]:
-        picked.append({
-            "source_id": s["id"],
-            "source_name": s["name"],
-            "page": ch["page"],
-            "chunk_id": ch["chunk_id"],
-            "text": ch["text"],
-        })
-    return picked
-
-def format_context(chunks):
-    """Build grounded context with cite ids."""
-    lines = []
-    for i, c in enumerate(chunks, start=1):
-        cite = f"[S:{c['source_name']}|p{c['page']}|c{c['chunk_id']}]"
-        snippet = c["text"]
-        lines.append(f"{cite}\n{snippet}\n")
-    return "\n".join(lines)
-
-def parse_citations_from_answer(answer: str):
-    """Optional: if model echoes cite tags, we show them. Otherwise we show retrieved chunk tags."""
-    # keep it simple
-    return []
-
-def gemini_text_generate(prompt: str):
-    resp = model.generate_content([prompt])
-    return getattr(resp, "text", "") or ""
-
-
-# =========================
-# TEXT PROVIDERS (Cloudflare Workers AI default; Gemini stays as backup)
-# =========================
-def _parse_retry_delay_seconds(text: str) -> float | None:
-    if not text:
-        return None
-    # Common patterns: "Please retry in 12s" / "retry in 12s" / "Retry-After: 12"
-    m = re.search(r"retry\s+in\s+(\d+(?:\.\d+)?)\s*s", text, flags=re.I)
-    if m:
-        return float(m.group(1))
-    m = re.search(r"Please\s+retry\s+in\s+(\d+(?:\.\d+)?)\s*s", text, flags=re.I)
-    if m:
-        return float(m.group(1))
-    return None
-
-def cloudflare_text_generate(prompt: str, *, max_retries: int = 5) -> str:
-    if not CF_ACCOUNT_ID or not CF_API_TOKEN:
-        raise RuntimeError("Cloudflare secrets yo'q (CF_ACCOUNT_ID/CF_API_TOKEN).")
-
-    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/{CF_TEXT_MODEL}"
-    headers = {"Authorization": f"Bearer {CF_API_TOKEN}", "Content-Type": "application/json"}
-
-    payload = {
-        "messages": [
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": prompt},
-        ]
-    }
-
-    base = 1.2  # seconds
-    for attempt in range(max_retries):
-        try:
-            r = requests.post(url, headers=headers, json=payload, timeout=60)
-        except requests.RequestException as e:
-            # network -> exponential backoff
-            sleep_s = min(20.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6)
-            time.sleep(sleep_s)
-            if attempt == max_retries - 1:
-                raise RuntimeError(f"Network error: {e}")
-            continue
-
-        # Success
-        if 200 <= r.status_code < 300:
-            data = {}
-            try:
-                data = r.json() if r.content else {}
-            except Exception:
-                return r.text or ""
-            # Workers AI typically returns {"result": {...}}; try common fields safely
-            result = data.get("result", data)
-            if isinstance(result, dict):
-                for k in ("response", "output", "text", "answer"):
-                    if k in result and isinstance(result[k], str):
-                        return result[k]
-                # Some models return {"result": {"choices":[{"message":{"content":"..."}}]}}
-                try:
-                    choices = result.get("choices", [])
-                    if choices and isinstance(choices, list):
-                        msg = choices[0].get("message", {})
-                        if isinstance(msg, dict) and isinstance(msg.get("content"), str):
-                            return msg["content"]
-                except Exception:
-                    pass
-            if isinstance(result, str):
-                return result
-            return data.get("text", "") if isinstance(data.get("text", ""), str) else (r.text or "")
-
-        # 429 rate-limit
-        if r.status_code == 429:
-            retry_after = r.headers.get("Retry-After", "")
-            delay = None
-            if retry_after.strip().isdigit():
-                delay = float(retry_after.strip())
-            else:
-                delay = _parse_retry_delay_seconds(r.text or "")
-            if delay is None:
-                delay = min(20.0, base * (2 ** attempt))
-            delay = delay + random.uniform(0.0, 0.8)  # jitter
-            time.sleep(delay)
-            continue
-
-        # 5xx backoff
-        if 500 <= r.status_code <= 599:
-            sleep_s = min(20.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6)
-            time.sleep(sleep_s)
-            continue
-
-        # Other errors: raise with message
-        raise RuntimeError(f"Cloudflare error {r.status_code}: {r.text[:400]}")
-
-    raise RuntimeError("Cloudflare: retries exhausted")
-
-def openrouter_text_generate(prompt: str, *, max_retries: int = 3) -> str:
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError("OpenRouter key yo'q (OPENROUTER_API_KEY).")
-
-    # NOTE: OpenRouter model is configurable; keep a safe default for demo
-    model_id = st.secrets.get("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct").strip()
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model_id,
-        "messages": [
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.2,
-    }
-
-    base = 1.0
-    for attempt in range(max_retries):
-        try:
-            r = requests.post(url, headers=headers, json=payload, timeout=60)
-        except requests.RequestException as e:
-            time.sleep(min(10.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6))
-            if attempt == max_retries - 1:
-                raise RuntimeError(f"OpenRouter network error: {e}")
-            continue
-
-        if 200 <= r.status_code < 300:
-            try:
-                data = r.json()
-                return data["choices"][0]["message"]["content"]
-            except Exception:
-                return r.text or ""
-
-        if r.status_code == 429:
-            # OpenRouter often provides retry-after header too
-            retry_after = r.headers.get("Retry-After", "")
-            delay = float(retry_after) if retry_after.strip().isdigit() else min(10.0, base * (2 ** attempt))
-            time.sleep(delay + random.uniform(0.0, 0.8))
-            continue
-
-        if 500 <= r.status_code <= 599:
-            time.sleep(min(10.0, base * (2 ** attempt)) + random.uniform(0.0, 0.6))
-            continue
-
-        raise RuntimeError(f"OpenRouter error {r.status_code}: {r.text[:400]}")
-
-    raise RuntimeError("OpenRouter: retries exhausted")
-
-def text_generate(prompt: str) -> str:
-    """Default: Cloudflare. Fallback: OpenRouter (if key) else Gemini."""
-    provider = (DEFAULT_TEXT_PROVIDER or "cloudflare").lower()
-
-    # 1) Try primary
-    try:
-        if provider == "cloudflare":
-            return cloudflare_text_generate(prompt)
-        if provider == "openrouter":
-            return openrouter_text_generate(prompt)
-        if provider == "gemini":
-            return gemini_text_generate(prompt)
-    except Exception:
-        pass
-
-    # 2) Fallback chain
-    if provider != "cloudflare":
-        try:
-            return cloudflare_text_generate(prompt)
-        except Exception:
-            pass
-    if OPENROUTER_API_KEY and provider != "openrouter":
-        try:
-            return openrouter_text_generate(prompt)
-        except Exception:
-            pass
-
-    # Last resort: Gemini (same fixed model name)
-    return gemini_text_generate(prompt)
-
-
-# =========================
-# TOPBAR
-# =========================
-credits = fetch_live_credits(st.session_state.u_email)
-
-st.markdown("<div class='nlm-shell'>", unsafe_allow_html=True)
-# --- User avatar/profile (7) ---
-def get_avatar_html(email):
-        initials = ""
-        if email:
-                parts = email.split("@")[0].split(".")
-                initials = ''.join([p[0].upper() for p in parts if p])[:2]
-        return f'<div class="nlm-avatar">{initials or "U"}</div>'
-
-st.markdown(f"""
-    <div class="nlm-topbar">
-        <div class="nlm-brand"><i class="fa fa-book"></i> Manuscript AI Studio <span class="nlm-pill"><i class="fa fa-moon"></i> NotebookLM dark-gray</span></div>
-        <div style="display:flex;align-items:center;gap:8px;">
-            {get_avatar_html(st.session_state.u_email)}
-            <div class="nlm-pill"><i class="fa fa-user"></i> {st.session_state.u_email} · <i class="fa fa-coins"></i> {credits} credits</div>
+if not file:
+    # === EMPTY STATE ===
+    st.markdown(f"""
+        <div class='empty-state'>
+            <h3 style='font-size:3rem; margin-bottom:20px;'>📜</h3>
+            <h3>Qo'lyozma yuklang</h3>
+            <p style='color:{text_secondary}; font-size:16px; line-height:1.6;'>
+                PDF, PNG, JPG yoki JPEG formatidagi fayllarni yuklashingiz mumkin<br>
+                Maksimal 15 sahifagacha tahlil qilish imkoniyati
+            </p>
         </div>
-    </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+    st.stop()
 
-# =========================
-# 3-PANEL GRID
-# =========================
-st.markdown("<div class='nlm-grid'>", unsafe_allow_html=True)
-
-# ---------- SOURCES (LEFT) ----------
-st.markdown("<div class='nlm-panel'>", unsafe_allow_html=True)
-st.markdown("<h3>Sources</h3><div class='nlm-sub'>Upload PDF or paste text. Select sources to use.</div>", unsafe_allow_html=True)
-
-with st.expander("+ Add sources", expanded=True):
-    up = st.file_uploader("Upload PDF", type=["pdf"], label_visibility="collapsed")
-    pasted = st.text_area("Paste text", height=120, placeholder="Paste text here…", label_visibility="collapsed")
-    add_cols = st.columns(2)
-    with add_cols[0]:
-        if st.button("Add PDF"):
-            if up is None:
-                st.warning("PDF tanlang.")
+if file:
+    if st.session_state.get("last_fn") != file.name:
+        with st.spinner("📂 Fayl tayyorlanmoqda..."):
+            data = file.getvalue()
+            imgs = []
+            if file.type == "application/pdf":
+                pdf = pdfium.PdfDocument(data)
+                for i in range(min(len(pdf), 15)):
+                    imgs.append(render_page(data, i, 3.5, True))
+                pdf.close()
             else:
-                pdf_bytes = up.getvalue()
-                pages = extract_pdf_text_pages(pdf_bytes, max_pages=30)
-                # build chunks
-                chunks = []
-                for pi, pt in enumerate(pages, start=1):
-                    for ci, ch in enumerate(chunk_text(pt, 1000, 120), start=1):
-                        chunks.append({"page": pi, "chunk_id": ci, "text": ch})
+                imgs.append(render_page(data, 0, 1.0, False))
 
-                sid = f"pdf:{up.name}:{datetime.now().timestamp()}"
-                st.session_state.sources.append({
-                    "id": sid,
-                    "name": up.name,
-                    "type": "pdf",
-                    "pages": len(pages),
-                    "chunks": chunks
-                })
-                st.session_state.active_source_ids.add(sid)
-                st.session_state.ui_notice = f"✅ Added: {up.name} (pages={len(pages)}, chunks={len(chunks)})"
-                st.rerun()
-    with add_cols[1]:
-        if st.button("Add Text"):
-            if not normalize_ws(pasted):
-                st.warning("Matn kiriting.")
-            else:
-                chunks = []
-                for ci, ch in enumerate(chunk_text(pasted, 1000, 120), start=1):
-                    chunks.append({"page": 1, "chunk_id": ci, "text": ch})
-                sid = f"text:{datetime.now().timestamp()}"
-                st.session_state.sources.append({
-                    "id": sid,
-                    "name": "Pasted text",
-                    "type": "text",
-                    "pages": 1,
-                    "chunks": chunks
-                })
-                st.session_state.active_source_ids.add(sid)
-                st.session_state.ui_notice = f"✅ Added: pasted text (chunks={len(chunks)})"
-                st.rerun()
+            st.session_state.imgs = imgs
+            st.session_state.last_fn = file.name
+            st.session_state.results, st.session_state.chats = {}, {}
+            gc.collect()
+            st.toast("✅ Fayl yuklandi!", icon="📁")
 
-if st.session_state.ui_notice:
-    st.info(st.session_state.ui_notice)
+    processed = []
+    for im in st.session_state.imgs:
+        p = im.rotate(rot, expand=True)
+        p = ImageEnhance.Brightness(p).enhance(br)
+        p = ImageEnhance.Contrast(p).enhance(ct)
+        processed.append(p)
 
-st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top:30px;'>📑 Varaqlarni Tanlang</h3>", unsafe_allow_html=True)
+    indices = st.multiselect(
+        "Tahlil qilish uchun varaqlarni belgilang:",
+        range(len(processed)),
+        default=[0],
+        format_func=lambda x: f"📄 Varaq {x+1}"
+    )
 
-if not st.session_state.sources:
-    st.markdown("<div class='nlm-sub'>No sources yet. Add a PDF or paste text.</div>", unsafe_allow_html=True)
-else:
-    # Quick search (inside sources)
-    qsearch = st.text_input("Quick search", placeholder="Search within sources…", label_visibility="collapsed")
-    if qsearch:
-        hits = simple_retrieve(qsearch, st.session_state.sources, st.session_state.active_source_ids, top_k=6)
-        if hits:
-            st.markdown("<div class='nlm-sub'>Top hits:</div>", unsafe_allow_html=True)
-            for h in hits:
-                st.markdown(f"<span class='nlm-chip'>{h['source_name']} · p{h['page']} · c{h['chunk_id']}</span>", unsafe_allow_html=True)
+    if not st.session_state.results and indices:
+        st.markdown("<h3 style='margin-top:30px;'>🖼 Tanlangan Varaqlar</h3>", unsafe_allow_html=True)
+        
+        # === COMPARE MODE ===
+        if st.session_state.compare_mode and len(indices) >= 2:
+            st.info("🔄 Solishtirish rejimi: Birinchi 2 ta varaq yonma-yon")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"<h4>📄 Varaq {indices[0]+1}</h4>", unsafe_allow_html=True)
+                st.markdown('<div class="magnifier-container">', unsafe_allow_html=True)
+                st.image(processed[indices[0]], use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"<h4>📄 Varaq {indices[1]+1}</h4>", unsafe_allow_html=True)
+                st.markdown('<div class="magnifier-container">', unsafe_allow_html=True)
+                st.image(processed[indices[1]], use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
         else:
-            st.caption("No hits.")
+            cols = st.columns(min(len(indices), 3))
+            for i, idx in enumerate(indices):
+                with cols[i % 3]:
+                    st.markdown('<div class="magnifier-container">', unsafe_allow_html=True)
+                    st.image(processed[idx], caption=f"Varaq {idx+1}", use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='nlm-sub'>Sources list</div>", unsafe_allow_html=True)
-
-    for s in list(st.session_state.sources):
-        row = st.columns([0.12, 0.68, 0.20])
-        checked = s["id"] in st.session_state.active_source_ids
-        with row[0]:
-            new_checked = st.checkbox(" ", value=checked, key=f"src_chk_{s['id']}")
-        with row[1]:
-            st.markdown(f"**{s['name']}**  \n<span class='nlm-sub'>{s['type'].upper()} · pages {s['pages']} · chunks {len(s['chunks'])}</span>", unsafe_allow_html=True)
-        with row[2]:
-            st.markdown("<div class='small-btn'>", unsafe_allow_html=True)
-            if st.button("Delete", key=f"del_{s['id']}"):
-                st.session_state.sources = [x for x in st.session_state.sources if x["id"] != s["id"]]
-                st.session_state.active_source_ids.discard(s["id"])
-                st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        if new_checked and not checked:
-            st.session_state.active_source_ids.add(s["id"])
-        if (not new_checked) and checked:
-            st.session_state.active_source_ids.discard(s["id"])
-
-    total_pages = sum(s["pages"] for s in st.session_state.sources if s["id"] in st.session_state.active_source_ids)
-    total_chunks = sum(len(s["chunks"]) for s in st.session_state.sources if s["id"] in st.session_state.active_source_ids)
-    st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
-    st.markdown(f"<span class='nlm-chip'>Selected pages: {total_pages}</span><span class='nlm-chip'>Selected chunks: {total_chunks}</span>", unsafe_allow_html=True)
-
-st.markdown("</div>", unsafe_allow_html=True)  # end sources panel
-
-
-# ---------- CHAT (MIDDLE) ----------
-st.markdown("<div class='nlm-panel'>", unsafe_allow_html=True)
-st.markdown("<h3>Chat</h3><div class='nlm-sub'>Ask questions grounded in your sources (with citations).</div>", unsafe_allow_html=True)
-
-suggest_cols = st.columns(3)
-suggested = [
-    "Asosiy g‘oya nima? 5-7 punkt.",
-    "Muhim terminlar ro‘yxati va qisqa izohlar.",
-    "Muallif maqsadi va asosiy dalillar (citations bilan)."
-]
-for i, text in enumerate(suggested):
-    with suggest_cols[i]:
-        st.markdown("<div class='small-btn'>", unsafe_allow_html=True)
-        if st.button(text, key=f"sugg_{i}"):
-            st.session_state["chat_input_seed"] = text
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# render chat history
-if st.session_state.chat:
-    for m in st.session_state.chat:
-        if m["role"] == "user":
-            st.markdown(f"<div class='msg-user'><div class='msg-h'>You</div><div class='msg-t'>{m['content']}</div></div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<div class='msg-ai'><div class='msg-h'>Assistant</div><div class='msg-t'>{m['content']}</div>", unsafe_allow_html=True)
-            if m.get("citations"):
-                for c in m["citations"]:
-                    st.markdown(f"<span class='nlm-cite'>{c}</span>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-else:
-    st.markdown("<div class='nlm-sub'>No messages yet. Add sources and ask a question.</div>", unsafe_allow_html=True)
-
-st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
-
-seed = st.session_state.pop("chat_input_seed", "")
-question = st.text_input("Ask", value=seed, placeholder="Ask something about your sources…", label_visibility="collapsed")
-
-ask_cols = st.columns([0.7, 0.3])
-with ask_cols[0]:
-    if st.button("Send"):
-        if not normalize_ws(question):
-            st.warning("Savol yozing.")
-        elif not st.session_state.active_source_ids:
-            st.warning("Kamida 1 ta source tanlang.")
-        else:
-            if not use_credit_atomic(st.session_state.u_email, 1):
-                st.warning("Kredit tugagan.")
-            else:
-                # Retrieve chunks (cheap)
-                chunks = simple_retrieve(question, st.session_state.sources, st.session_state.active_source_ids, top_k=8)
-                st.session_state.last_retrieval = chunks
-
-                # DEBUG: retrieval natijasini va contextni ko'rsatish
-                st.write("**[DEBUG] Retrieval natijasi (chunks):**", chunks)
-                context = format_context(chunks)
-                st.write("**[DEBUG] Modelga yuboriladigan context:**", context)
-
-                prompt = f"""
-    You must answer ONLY using the provided SOURCE EXCERPTS below.
-    If answer is not present, say: "Manbada topilmadi."
-    Always include citations by reusing the cite tags like [S:NAME|pX|cY].
-
-    QUESTION:
-    {question}
-
-    SOURCE EXCERPTS:
-    {context}
-
-    FORMAT:
-    - Answer in Uzbek
-    - Use short paragraphs / bullets when helpful
-    - Add citations inline like [S:...]
-    """
-                with st.spinner("Generating answer..."):
-                    answer = text_generate(prompt)
-
-                # If model didn't include cites, we still show retrieval tags for transparency
-                cites = []
-                if chunks:
-                    for c in chunks[:5]:
-                        cites.append(f"{c['source_name']} p{c['page']} c{c['chunk_id']}")
-
-                st.session_state.chat.append({"role": "user", "content": question, "citations": []})
-                st.session_state.chat.append({"role": "assistant", "content": answer, "citations": cites})
-                st.rerun()
-
-with ask_cols[1]:
-    st.markdown("<div class='small-btn'>", unsafe_allow_html=True)
-    if st.button("Clear chat"):
-        st.session_state.chat = []
-        st.session_state.last_retrieval = []
-        st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("</div>", unsafe_allow_html=True)  # end chat panel
-
-
-# ---------- STUDIO (RIGHT) ----------
-st.markdown("<div class='nlm-panel'>", unsafe_allow_html=True)
-st.markdown("<h3>Studio</h3><div class='nlm-sub'>Generate study materials from selected sources.</div>", unsafe_allow_html=True)
-
-def studio_context():
-    # If we have recent retrieval, use it; otherwise use first chunks from selected sources
-    if st.session_state.last_retrieval:
-        chunks = st.session_state.last_retrieval
-    else:
-        chunks = []
-        for s in st.session_state.sources:
-            if s["id"] in st.session_state.active_source_ids:
-                for ch in s["chunks"][:3]:
-                    chunks.append({
-                        "source_id": s["id"],
-                        "source_name": s["name"],
-                        "page": ch["page"],
-                        "chunk_id": ch["chunk_id"],
-                        "text": ch["text"],
-                    })
-        chunks = chunks[:8]
-    return format_context(chunks), chunks
-
-btn_cols = st.columns(3)
-
-with btn_cols[0]:
-    if st.button("Summary"):
-        if not st.session_state.active_source_ids:
-            st.warning("Kamida 1 ta source tanlang.")
-        else:
-            if credits <= 0:
-                st.warning("Kredit tugagan.")
-            else:
-                if not use_credit_atomic(st.session_state.u_email, 1):
-                    st.warning("Kredit tugagan.")
-                else:
-                    ctx, chunks = studio_context()
-                    prompt = f"""
-    Create a concise study SUMMARY in Uzbek, grounded ONLY in the excerpts.
-    Return:
-    1) 8-12 bullet points
-    2) 3 key takeaways
-    Use inline citations [S:NAME|pX|cY].
-
-    EXCERPTS:
-    {ctx}
-    """
-                    with st.spinner("Generating summary..."):
-                        out = text_generate(prompt)
-                    st.session_state.studio_output["summary"] = out
-                    # Optionally spend 1 credit per studio action:
-                    # use_credit_atomic(st.session_state.u_email, 1)
-                    st.rerun()
-
-with btn_cols[1]:
-    if st.button("Flashcards"):
-        if not st.session_state.active_source_ids:
-            st.warning("Kamida 1 ta source tanlang.")
-        else:
-            if credits <= 0:
-                st.warning("Kredit tugagan.")
-            else:
-                if not use_credit_atomic(st.session_state.u_email, 1):
-                    st.warning("Kredit tugagan.")
-                else:
-                    ctx, chunks = studio_context()
-                    prompt = f"""
-    Generate 8-12 FLASHCARDS in Uzbek, grounded ONLY in excerpts.
-    Format strictly as JSON:
-    [
-      {{"q":"...","a":"...","cite":"[S:...]" }},
-      ...
-    ]
-    Keep answers short. Use citations.
-
-    EXCERPTS:
-    {ctx}
-    """
-                    with st.spinner("Generating flashcards..."):
-                        out = text_generate(prompt)
-                    # parse JSON safely
-                    cards = []
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
+        if current_credits >= len(indices):
+            prompt = f"Academic analysis of {lang} manuscript ({era}). 1.Transliteration 2.Translation 3.Expert Notes."
+            
+            # === PROGRESS TRACKER ===
+            progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
+            
+            for i, idx in enumerate(indices):
+                with st.status(f"🔍 Varaq {idx+1} ekspertizadan o'tkazilmoqda..."):
                     try:
-                        cards = json.loads(out.strip())
-                        if not isinstance(cards, list):
-                            cards = []
-                    except Exception:
-                        cards = []
-                    st.session_state.studio_output["flashcards"] = cards
-                    st.rerun()
+                        ai_img = enhance_image_for_ai(processed[idx])
+                        resp = model.generate_content([prompt, img_to_png_payload(ai_img)])
 
-with btn_cols[2]:
-    if st.button("Quiz"):
-        if not st.session_state.active_source_ids:
-            st.warning("Kamida 1 ta source tanlang.")
+                        if resp.candidates and resp.candidates[0].content.parts:
+                            st.session_state.results[idx] = resp.text
+                            use_credit_atomic(st.session_state.u_email)
+                            st.toast(f"✅ Varaq {idx+1} tayyor!", icon="🎉")
+                            st.success(f"✅ Varaq {idx+1} muvaffaqiyatli tahlil qilindi")
+                        else:
+                            st.error("⚠️ AI javob berish imkoniyatiga ega emas")
+                    except Exception as e:
+                        st.error(f"❌ Xatolik yuz berdi: {e}")
+                
+                # Update progress
+                progress_bar.progress((i+1)/len(indices), text=f"📊 {i+1}/{len(indices)} varaq tahlil qilindi")
+            
+            # Save to history
+            st.session_state.history.append({
+                'id': datetime.now().timestamp(),
+                'date': datetime.now().strftime("%d.%m.%Y %H:%M"),
+                'filename': file.name,
+                'results': st.session_state.results.copy(),
+                'chats': st.session_state.chats.copy()
+            })
+            
+            # Keep only last 10
+            if len(st.session_state.history) > 10:
+                st.session_state.history = st.session_state.history[-10:]
+            
+            progress_bar.empty()
+            st.balloons()
+            st.toast("🎉 Barcha varaqlar tahlil qilindi!", icon="✨")
+            st.rerun()
         else:
-            if credits <= 0:
-                st.warning("Kredit tugagan.")
-            else:
-                if not use_credit_atomic(st.session_state.u_email, 1):
-                    st.warning("Kredit tugagan.")
-                else:
-                    ctx, chunks = studio_context()
-                    prompt = f"""
-    Generate a QUIZ of 8 questions in Uzbek grounded ONLY in excerpts.
-    Return JSON:
-    [
-      {{"q":"...","options":["A","B","C","D"],"answer_index":0,"explain":"...","cite":"[S:...]" }},
-      ...
-    ]
-    Make it easy for demo.
+            st.warning(f"⚠️ Kredit yetarli emas! Sizda {current_credits} sahifa kredit bor, {len(indices)} sahifa tahlil qilish uchun yetarli emas.")
 
-    EXCERPTS:
-    {ctx}
-    """
-                    with st.spinner("Generating quiz..."):
-                        out = text_generate(prompt)
-                    quiz = []
-                    try:
-                        quiz = json.loads(out.strip())
-                        if not isinstance(quiz, list):
-                            quiz = []
-                    except Exception:
-                        quiz = []
-                    st.session_state.studio_output["quiz"] = quiz
-                    st.rerun()
+    if st.session_state.results:
+        st.divider()
+        st.markdown("<h2>📊 Tahlil Natijalari</h2>", unsafe_allow_html=True)
+        
+        # === EXPORT FORMAT SELECTOR ===
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"<p style='font-size:16px; color:{text_secondary};'>Natijalarni yuklab oling:</p>", unsafe_allow_html=True)
+        with col2:
+            export_format = st.selectbox("📥 Format", ["DOCX", "TXT", "JSON"], label_visibility="collapsed")
+        
+        final_text = ""
+        today = datetime.now().strftime("%d.%m.%Y")
+        
+        # Mobile navigation buttons
+        result_indices = sorted(st.session_state.results.keys())
+        if len(result_indices) > 1:
+            nav_col1, nav_col2, nav_col3 = st.columns([1, 2, 1])
+            with nav_col1:
+                if st.button("⬅️ Oldingi", key="mobilePrev", use_container_width=True):
+                    if st.session_state.current_page_index > 0:
+                        st.session_state.current_page_index -= 1
+                        st.rerun()
+            with nav_col3:
+                if st.button("Keyingi ➡️", key="mobileNext", use_container_width=True):
+                    if st.session_state.current_page_index < len(result_indices) - 1:
+                        st.session_state.current_page_index += 1
+                        st.rerun()
 
-st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
+        for idx in result_indices:
+            st.markdown(f"<h4 style='margin-top:40px;'>📖 Varaq {idx+1} - Tahlil</h4>", unsafe_allow_html=True)
+            c1, c2 = st.columns([1, 1.3])
 
-# Studio outputs
-out = st.session_state.studio_output
+            with c1:
+                st.markdown('<div class="magnifier-container">', unsafe_allow_html=True)
+                st.image(processed[idx], use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
-if out.get("summary"):
-    st.markdown("<div class='msg-ai'><div class='msg-h'>Summary</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='msg-t'>{out['summary']}</div></div>", unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"<div class='result-box'>{st.session_state.results[idx]}</div>", unsafe_allow_html=True)
+                cite = f"Iqtibos: Manuscript AI (2026). Varaq {idx+1} tahlili ({lang}). Ekspert: d87809889-dot. Sana: {today}."
+                st.markdown(f"<div class='citation-box'>📌 {cite}</div>", unsafe_allow_html=True)
 
-if out.get("flashcards"):
-    st.markdown("<div class='msg-ai'><div class='msg-h'>Flashcards</div>", unsafe_allow_html=True)
-    for c in out["flashcards"][:20]:
-        q = c.get("q", "")
-        a = c.get("a", "")
-        cite = c.get("cite", "")
-        st.markdown(f"<div class='msg-t'>Q: {q}\nA: {a}\n<span class='nlm-cite'>{cite}</span></div><div class='nlm-divider'></div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color:{text_secondary}; font-weight:bold; margin-top:20px; margin-bottom:8px;'>✏️ Tahrirlash:</p>", unsafe_allow_html=True)
+                st.session_state.results[idx] = st.text_area(
+                    f"Natijani tahrirlash",
+                    value=st.session_state.results[idx],
+                    height=350,
+                    key=f"ed_{idx}",
+                    label_visibility="collapsed"
+                )
 
-if out.get("quiz"):
-    st.markdown("<div class='msg-ai'><div class='msg-h'>Quiz</div>", unsafe_allow_html=True)
-    for i, q in enumerate(out["quiz"][:20], start=1):
-        qq = q.get("q", "")
-        opts = q.get("options", [])
-        ans = q.get("answer_index", 0)
-        cite = q.get("cite", "")
-        expl = q.get("explain", "")
-        st.markdown(f"<div class='msg-t'><b>{i}) {qq}</b></div>", unsafe_allow_html=True)
-        for j, o in enumerate(opts):
-            mark = "✅" if j == ans else "•"
-            st.markdown(f"<div class='msg-t'>{mark} {o}</div>", unsafe_allow_html=True)
-        if expl:
-            st.markdown(f"<div class='msg-t'><i>{expl}</i></div>", unsafe_allow_html=True)
-        st.markdown(f"<span class='nlm-cite'>{cite}</span><div class='nlm-divider'></div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+                final_text += f"\n\n--- PAGE {idx+1} ---\n{st.session_state.results[idx]}\n\n{cite}"
 
-# Exports (simple)
-st.markdown("<div class='nlm-divider'></div>", unsafe_allow_html=True)
-export_format = st.selectbox("Export", ["TXT", "DOCX", "JSON"], label_visibility="collapsed")
+                # === CHAT INTERFACE ===
+                st.markdown(f"<p style='color:{text_secondary}; font-weight:bold; margin-top:25px; margin-bottom:12px;'>💬 Savollar va Javoblar:</p>", unsafe_allow_html=True)
+                
+                st.session_state.chats.setdefault(idx, [])
+                for ch in st.session_state.chats[idx]:
+                    st.markdown(f"<div class='chat-user'><b>Savol:</b> {ch['q']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='chat-ai'><b>Javob:</b> {ch['a']}</div>", unsafe_allow_html=True)
 
-export_payload = {
-    "user": st.session_state.u_email,
-    "date": datetime.now().isoformat(),
-    "selected_sources": [s["name"] for s in st.session_state.sources if s["id"] in st.session_state.active_source_ids],
-    "chat": st.session_state.chat,
-    "studio": st.session_state.studio_output
-}
+                q = st.text_input("🤔 Savolingizni yozing:", key=f"q_in_{idx}", placeholder="Matn haqida savol bering...")
+                if st.button(f"📤 So'rash", key=f"btn_{idx}"):
+                    if q:
+                        with st.spinner("🤖 AI javob tayyorlayapti..."):
+                            chat_res = model.generate_content([
+                                f"Hujjat: {st.session_state.results[idx]}\nQ: {q}",
+                                img_to_png_payload(processed[idx])
+                            ])
+                            st.session_state.chats[idx].append({"q": q, "a": chat_res.text})
+                            st.toast("✅ Javob olindi!", icon="💬")
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Iltimos, avval savol yozing!")
 
-if export_format == "JSON":
-    st.download_button("Download JSON", json.dumps(export_payload, ensure_ascii=False, indent=2), "studio_export.json", mime="application/json")
-elif export_format == "TXT":
-    txt = []
-    txt.append("=== Manuscript AI Studio Export ===")
-    txt.append(f"User: {st.session_state.u_email}")
-    txt.append(f"Date: {export_payload['date']}")
-    txt.append("\n--- CHAT ---")
-    for m in st.session_state.chat:
-        txt.append(f"{m['role'].upper()}: {m['content']}")
-    txt.append("\n--- STUDIO SUMMARY ---")
-    txt.append(out.get("summary",""))
-    txt.append("\n--- FLASHCARDS ---")
-    for c in out.get("flashcards", []):
-        txt.append(f"Q: {c.get('q','')}\nA: {c.get('a','')}\nCITE: {c.get('cite','')}\n")
-    txt.append("\n--- QUIZ ---")
-    for q in out.get("quiz", []):
-        txt.append(f"Q: {q.get('q','')}\nOptions: {q.get('options',[])}\nAnswer: {q.get('answer_index',0)}\nCITE: {q.get('cite','')}\n")
-    st.download_button("Download TXT", "\n".join(txt), "studio_export.txt", mime="text/plain")
-else:
-    if Document is None:
-        st.info("DOCX export uchun python-docx kutubxonasi kerak. Hozir o'rnatilmagan.")
-    else:
-        doc = Document()
-        doc.add_heading("Manuscript AI Studio Export", level=1)
-        doc.add_paragraph(f"User: {st.session_state.u_email}")
-        doc.add_paragraph(f"Date: {export_payload['date']}")
-        doc.add_heading("Chat", level=2)
-        for m in st.session_state.chat:
-            doc.add_paragraph(f"{m['role'].upper()}: {m['content']}")
-        doc.add_heading("Studio Summary", level=2)
-        doc.add_paragraph(out.get("summary",""))
-        doc.add_heading("Flashcards", level=2)
-        for c in out.get("flashcards", []):
-            doc.add_paragraph(f"Q: {c.get('q','')}")
-            doc.add_paragraph(f"A: {c.get('a','')}")
-            doc.add_paragraph(f"Cite: {c.get('cite','')}")
-        doc.add_heading("Quiz", level=2)
-        for q in out.get("quiz", []):
-            doc.add_paragraph(f"Q: {q.get('q','')}")
-            doc.add_paragraph(f"Options: {q.get('options',[])}")
-            doc.add_paragraph(f"Answer index: {q.get('answer_index',0)}")
-            doc.add_paragraph(f"Cite: {q.get('cite','')}")
-            bio = io.BytesIO()
-            doc.save(bio)
-            st.download_button("Download DOCX", bio.getvalue(), "studio_export.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-st.markdown("</div>", unsafe_allow_html=True)  # end studio panel
-
-st.markdown("</div>", unsafe_allow_html=True)  # end grid
-st.markdown("</div>", unsafe_allow_html=True)  # end shell
+        if final_text:
+            st.divider()
+            
+            # === EXPORT BASED ON FORMAT ===
+            if export_format == "DOCX":
+                doc = Document()
+                doc.add_paragraph(final_text)
+                bio = io.BytesIO()
+                doc.save(bio)
+                st.download_button(
+                    "📥 WORD FORMATDA YUKLAB OLISH",
+                    bio.getvalue(),
+                    "manuscript_ai_report.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    on_click=lambda: st.toast("✅ DOCX yuklab olindi!", icon="📥")
+                )
+            elif export_format == "TXT":
+                st.download_button(
+                    "📥 TEXT FORMATDA YUKLAB OLISH",
+                    final_text,
+                    "manuscript_ai_report.txt",
+                    mime="text/plain",
+                    on_click=lambda: st.toast("✅ TXT yuklab olindi!", icon="📥")
+                )
+            elif export_format == "JSON":
+                json_data = json.dumps({
+                    "metadata": {
+                        "date": today,
+                        "language": lang,
+                        "script": era,
+                        "filename": file.name,
+                        "user": st.session_state.u_email
+                    },
+                    "results": st.session_state.results,
+                    "chats": st.session_state.chats
+                }, ensure_ascii=False, indent=2)
+                st.download_button(
+                    "📥 JSON FORMATDA YUKLAB OLISH",
+                    json_data,
+                    "manuscript_ai_report.json",
+                    mime="application/json",
+                    on_click=lambda: st.toast("✅ JSON yuklab olindi!", icon="📥")
+                )
 
 gc.collect()
