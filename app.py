@@ -90,107 +90,257 @@ text_secondary = "#a0a0a0" if dark else "#5d4037"
 card_bg = theme["bg_dark2"] if dark else "#ffffff"
 
 # ==========================================
-# DYNAMIC CSS
+# DYNAMIC CSS - ULTRA PROFESSIONAL
 # ==========================================
 st.markdown(f"""
     <style>
+    /* === GOOGLE FONTS === */
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    /* === CSS VARIABLES === */
+    :root {{
+        --primary: {theme['primary']};
+        --accent: {theme['accent']};
+        --accent2: {theme['accent2']};
+        --bg-main: {bg_main};
+        --bg-secondary: {bg_secondary};
+        --text-primary: {text_primary};
+        --text-secondary: {text_secondary};
+        --card-bg: {card_bg};
+        --glass-bg: rgba(255,255,255,0.05);
+        --glass-border: rgba(255,255,255,0.1);
+        --shadow-sm: 0 2px 8px rgba(0,0,0,0.08);
+        --shadow-md: 0 8px 24px rgba(0,0,0,0.12);
+        --shadow-lg: 0 16px 48px rgba(0,0,0,0.16);
+        --shadow-glow: 0 0 40px rgba(197,160,89,0.3);
+        --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        --blur-amount: 20px;
+    }}
+    
     /* === SYSTEM OVERRIDES === */
     footer {{visibility: hidden !important;}}
     .stAppDeployButton {{display:none !important;}}
     #stDecoration {{display:none !important;}}
+    
+    /* === SCROLLBAR STYLING === */
+    ::-webkit-scrollbar {{
+        width: 8px;
+        height: 8px;
+    }}
+    
+    ::-webkit-scrollbar-track {{
+        background: {bg_secondary};
+        border-radius: 4px;
+    }}
+    
+    ::-webkit-scrollbar-thumb {{
+        background: linear-gradient(180deg, {theme['accent']}, {theme['accent2']});
+        border-radius: 4px;
+        transition: var(--transition-normal);
+    }}
+    
+    ::-webkit-scrollbar-thumb:hover {{
+        background: {theme['accent2']};
+    }}
 
     header[data-testid='stHeader'] {{
         background: rgba(0,0,0,0) !important;
         visibility: visible !important;
+        backdrop-filter: blur(10px);
     }}
 
     button[data-testid='stSidebarCollapseButton'] {{
-        background-color: {theme['primary']} !important;
+        background: linear-gradient(135deg, {theme['primary']} 0%, rgba(12,20,33,0.9) 100%) !important;
         color: {theme['accent']} !important;
-        border: 1px solid {theme['accent']} !important;
+        border: 1px solid rgba(197,160,89,0.3) !important;
         position: fixed !important;
         z-index: 1000001 !important;
-        transition: all 0.3s ease !important;
+        transition: var(--transition-normal) !important;
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow-md);
     }}
     
     button[data-testid='stSidebarCollapseButton']:hover {{
-        background-color: {theme['accent']} !important;
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['accent2']} 100%) !important;
         color: {theme['primary']} !important;
-        transform: scale(1.05);
+        transform: scale(1.08) rotate(3deg);
+        box-shadow: var(--shadow-glow);
     }}
 
     /* === MAIN LAYOUT === */
     .main {{ 
-        background: linear-gradient(135deg, {bg_main} 0%, {bg_secondary} 100%) !important;
+        background: linear-gradient(135deg, {bg_main} 0%, {bg_secondary} 50%, {bg_main} 100%) !important;
         color: {text_primary} !important;
-        font-family: 'Times New Roman', serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         padding: 2rem 1rem;
+        min-height: 100vh;
+        position: relative;
+    }}
+    
+    /* Subtle animated background pattern */
+    .main::before {{
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+            radial-gradient(circle at 20% 80%, rgba(197,160,89,0.03) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(197,160,89,0.03) 0%, transparent 50%),
+            radial-gradient(circle at 40% 40%, rgba(197,160,89,0.02) 0%, transparent 30%);
+        pointer-events: none;
+        z-index: 0;
     }}
     
     /* === TYPOGRAPHY === */
     h1, h2, h3, h4 {{ 
-        color: {theme['primary']} !important;
-        font-family: 'Georgia', serif;
-        border-bottom: 2px solid {theme['accent']};
+        color: {theme['primary'] if not dark else theme['accent']} !important;
+        font-family: 'Playfair Display', Georgia, serif;
+        font-weight: 600;
+        letter-spacing: -0.02em;
         text-align: center;
-        padding-bottom: 12px;
-        margin-bottom: 20px;
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+        position: relative;
+    }}
+    
+    h1::after, h2::after {{
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80px;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, {theme['accent']}, transparent);
+        border-radius: 2px;
     }}
     
     h1 {{
-        font-size: clamp(1.8rem, 4vw, 2.5rem) !important;
+        font-size: clamp(2rem, 5vw, 3rem) !important;
         margin-top: 0;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }}
     
     h2 {{
-        font-size: clamp(1.4rem, 3vw, 2rem) !important;
+        font-size: clamp(1.5rem, 3.5vw, 2.2rem) !important;
+    }}
+    
+    h3 {{
+        font-size: clamp(1.2rem, 3vw, 1.6rem) !important;
+        border-bottom: none;
     }}
     
     h4 {{
         font-size: clamp(1.1rem, 2.5vw, 1.4rem) !important;
+        border-bottom: none;
+    }}
+    
+    p, li, span {{
+        font-family: 'Inter', sans-serif;
+        line-height: 1.7;
     }}
 
-    /* === BUTTONS === */
+    /* === BUTTONS - GLASSMORPHISM === */
     .stButton>button {{ 
-        background: linear-gradient(135deg, {theme['primary']} 0%, {theme['accent']} 100%) !important;
-        color: {card_bg} !important;
-        font-weight: bold !important;
+        background: linear-gradient(135deg, {theme['primary']} 0%, rgba(12,20,33,0.95) 100%) !important;
+        color: {theme['accent']} !important;
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.02em !important;
         width: 100% !important;
-        padding: 14px 20px !important;
-        border: 2px solid {theme['accent']} !important;
-        border-radius: 8px !important;
+        padding: 16px 24px !important;
+        border: 1px solid rgba(197,160,89,0.3) !important;
+        border-radius: 12px !important;
         height: auto !important;
-        min-height: 50px !important;
-        font-size: 16px !important;
+        min-height: 54px !important;
+        font-size: 15px !important;
         cursor: pointer !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+        transition: all var(--transition-normal) !important;
+        box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+        backdrop-filter: blur(10px) !important;
+        position: relative !important;
+        overflow: hidden !important;
+    }}
+    
+    .stButton>button::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(197,160,89,0.2), transparent);
+        transition: left 0.5s ease;
+    }}
+    
+    .stButton>button:hover::before {{
+        left: 100%;
     }}
     
     .stButton>button:hover {{ 
-        transform: translateY(-2px) !important;
-        box-shadow: 0 8px 20px rgba(197,160,89,0.4) !important;
-        border-color: {theme['accent2']} !important;
-        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['primary']} 100%) !important;
+        transform: translateY(-3px) !important;
+        box-shadow: var(--shadow-lg), var(--shadow-glow) !important;
+        border-color: {theme['accent']} !important;
+        background: linear-gradient(135deg, {theme['primary']} 0%, {theme['accent']}22 100%) !important;
+        color: {theme['accent2']} !important;
     }}
     
     .stButton>button:active {{
-        transform: translateY(0) !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: var(--shadow-sm) !important;
+    }}
+    
+    /* Primary CTA Button */
+    .stButton>button[kind="primary"] {{
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['accent2']} 100%) !important;
+        color: {theme['primary']} !important;
+        border: none !important;
     }}
 
-    /* === RESULT BOX === */
+    /* === RESULT BOX - PREMIUM GLASSMORPHISM === */
     .result-box {{ 
-        background: {card_bg} !important;
-        padding: 28px !important;
-        border-radius: 14px !important;
-        border-left: 12px solid {theme['accent']} !important;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.12) !important;
+        background: linear-gradient(145deg, rgba(30,42,56,0.95) 0%, rgba(22,32,44,0.98) 100%) !important;
+        padding: 32px !important;
+        border-radius: 16px !important;
+        border: 1px solid rgba(197,160,89,0.25) !important;
+        border-left: 4px solid {theme['accent']} !important;
+        box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+        backdrop-filter: blur(20px) !important;
         color: {text_primary} !important;
-        font-size: 17px;
-        line-height: 1.8;
-        margin-bottom: 20px;
-        animation: fadeInUp 0.6s ease-out;
+        font-size: 16px;
+        line-height: 1.85;
+        margin-bottom: 24px;
+        animation: fadeInUp 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        position: relative;
+        overflow: hidden;
+        transition: all var(--transition-normal);
+    }}
+    
+    .result-box::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']});
+        background-size: 200% 100%;
+        animation: shimmer 3s ease-in-out infinite;
+    }}
+    
+    @keyframes shimmer {{
+        0%, 100% {{ background-position: 200% 0; }}
+        50% {{ background-position: -200% 0; }}
+    }}
+    
+    .result-box:hover {{
+        border-color: rgba(197,160,89,0.4) !important;
+        box-shadow: var(--shadow-xl), var(--shadow-glow) !important;
+        transform: translateY(-2px);
     }}
     
     @keyframes fadeInUp {{
@@ -204,47 +354,77 @@ st.markdown(f"""
         }}
     }}
 
-    /* === FORM INPUTS === */
+    /* === FORM INPUTS - PREMIUM === */
     .stTextInput>div>div>input,
     .stTextArea textarea {{
-        background-color: {bg_secondary} !important;
+        background: linear-gradient(135deg, {bg_secondary} 0%, rgba(30,42,56,0.95) 100%) !important;
         color: {text_primary} !important;
-        border: 2px solid {theme['accent']} !important;
-        border-radius: 8px !important;
-        padding: 12px !important;
-        font-family: 'Courier New', monospace !important;
-        transition: all 0.3s ease !important;
-        font-size: 15px !important;
+        border: 1px solid rgba(197,160,89,0.3) !important;
+        border-radius: 12px !important;
+        padding: 14px 16px !important;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+        transition: all var(--transition-normal) !important;
+        font-size: 14px !important;
+        box-shadow: var(--shadow-sm), inset 0 2px 4px rgba(0,0,0,0.1) !important;
     }}
     
     .stTextInput>div>div>input:focus,
     .stTextArea textarea:focus {{
-        border-color: {theme['accent2']} !important;
-        box-shadow: 0 0 0 3px rgba(197,160,89,0.2) !important;
+        border-color: {theme['accent']} !important;
+        box-shadow: 0 0 0 3px rgba(197,160,89,0.15), var(--shadow-md) !important;
         outline: none !important;
+        background: linear-gradient(135deg, rgba(30,42,56,1) 0%, rgba(22,32,44,1) 100%) !important;
+    }}
+    
+    .stTextInput>div>div>input::placeholder,
+    .stTextArea textarea::placeholder {{
+        color: rgba(253,250,241,0.4) !important;
+        font-style: italic;
     }}
 
-    /* === CHAT BUBBLES === */
+    /* === CHAT BUBBLES - PREMIUM === */
     .chat-user {{
-        background: linear-gradient(135deg, {bg_secondary} 0%, {card_bg} 100%);
+        background: linear-gradient(135deg, rgba(30,42,56,0.95) 0%, rgba(22,32,44,0.9) 100%);
         color: {text_primary} !important;
-        padding: 16px 20px;
-        border-radius: 18px 18px 4px 18px;
-        border-left: 5px solid {theme['primary']};
-        margin-bottom: 12px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.08);
-        animation: slideInLeft 0.4s ease-out;
+        padding: 18px 22px;
+        border-radius: 20px 20px 6px 20px;
+        border: 1px solid rgba(12,20,33,0.3);
+        border-left: 4px solid {theme['primary']};
+        margin-bottom: 14px;
+        box-shadow: var(--shadow-md);
+        animation: slideInLeft 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        backdrop-filter: blur(10px);
+        position: relative;
+    }}
+    
+    .chat-user::after {{
+        content: '👤';
+        position: absolute;
+        bottom: -8px;
+        left: 16px;
+        font-size: 14px;
     }}
     
     .chat-ai {{
-        background: linear-gradient(135deg, {card_bg} 0%, {bg_secondary} 100%);
+        background: linear-gradient(135deg, rgba(22,32,44,0.95) 0%, rgba(30,42,56,0.9) 100%);
         color: {text_primary} !important;
-        padding: 16px 20px;
-        border-radius: 18px 18px 18px 4px;
-        border-left: 5px solid {theme['accent']};
-        margin-bottom: 16px;
-        box-shadow: 0 3px 12px rgba(197,160,89,0.15);
-        animation: slideInRight 0.4s ease-out;
+        padding: 18px 22px;
+        border-radius: 20px 20px 20px 6px;
+        border: 1px solid rgba(197,160,89,0.2);
+        border-left: 4px solid {theme['accent']};
+        margin-bottom: 18px;
+        box-shadow: var(--shadow-md), 0 0 20px rgba(197,160,89,0.08);
+        animation: slideInRight 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        backdrop-filter: blur(10px);
+        position: relative;
+    }}
+    
+    .chat-ai::after {{
+        content: '🤖';
+        position: absolute;
+        bottom: -8px;
+        right: 16px;
+        font-size: 14px;
     }}
     
     @keyframes slideInLeft {{
@@ -257,49 +437,95 @@ st.markdown(f"""
         to {{ opacity: 1; transform: translateX(0); }}
     }}
 
-    /* === SIDEBAR === */
+    /* === SIDEBAR - PREMIUM === */
     section[data-testid='stSidebar'] {{
-        background: linear-gradient(180deg, {theme['primary']} 0%, #1a2332 100%) !important;
-        border-right: 3px solid {theme['accent']} !important;
+        background: linear-gradient(180deg, {theme['primary']} 0%, #0a0f18 100%) !important;
+        border-right: 1px solid rgba(197,160,89,0.3) !important;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.3) !important;
+    }}
+    
+    section[data-testid='stSidebar']::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c5a059' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 0;
     }}
     
     section[data-testid='stSidebar'] .stMarkdown {{
         color: #fdfaf1 !important;
+        position: relative;
+        z-index: 1;
     }}
     
     section[data-testid='stSidebar'] [data-testid='stMetricValue'] {{
         color: {theme['accent']} !important;
-        font-size: 24px !important;
-        font-weight: bold !important;
+        font-size: 28px !important;
+        font-weight: 700 !important;
+        font-family: 'Playfair Display', serif !important;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }}
+    
+    section[data-testid='stSidebar'] [data-testid='stMetricLabel'] {{
+        color: rgba(253,250,241,0.7) !important;
+        font-family: 'Inter', sans-serif !important;
+        font-size: 12px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.1em !important;
     }}
 
-    /* === IMAGE MAGNIFIER === */
+    /* === IMAGE MAGNIFIER - PREMIUM === */
     .magnifier-container {{
         overflow: hidden;
-        border: 3px solid {theme['accent']};
-        border-radius: 12px;
+        border: 2px solid rgba(197,160,89,0.4);
+        border-radius: 16px;
         cursor: zoom-in;
-        background: white;
-        padding: 8px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        transition: all 0.3s ease;
+        background: linear-gradient(135deg, #ffffff 0%, #f8f6f0 100%);
+        padding: 12px;
+        box-shadow: var(--shadow-lg), inset 0 0 20px rgba(0,0,0,0.03);
+        transition: all var(--transition-normal);
         position: relative;
     }}
     
+    .magnifier-container::before {{
+        content: '🔍';
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        font-size: 20px;
+        opacity: 0;
+        transition: opacity var(--transition-fast);
+        z-index: 10;
+        background: rgba(255,255,255,0.9);
+        padding: 6px 10px;
+        border-radius: 8px;
+        box-shadow: var(--shadow-sm);
+    }}
+    
+    .magnifier-container:hover::before {{
+        opacity: 1;
+    }}
+    
     .magnifier-container:hover {{
-        box-shadow: 0 8px 25px rgba(197,160,89,0.3);
-        border-color: {theme['accent2']};
+        box-shadow: var(--shadow-xl), var(--shadow-glow);
+        border-color: {theme['accent']};
+        transform: translateY(-4px);
     }}
     
     .magnifier-container img {{
-        transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        border-radius: 8px;
     }}
     
     .magnifier-container img:hover {{
-        transform: scale(1.3);
+        transform: scale(1.4);
     }}
 
-    /* === ZOOM MODAL === */
+    /* === ZOOM MODAL - PREMIUM === */
     .modal {{
         display: none;
         position: fixed;
@@ -310,8 +536,9 @@ st.markdown(f"""
         width: 100%;
         height: 100%;
         overflow: auto;
-        background-color: rgba(0,0,0,0.95);
-        animation: fadeIn 0.3s;
+        background-color: rgba(0,0,0,0.97);
+        animation: fadeIn 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+        backdrop-filter: blur(10px);
     }}
     
     .modal-content {{
@@ -319,7 +546,9 @@ st.markdown(f"""
         display: block;
         width: 90%;
         max-width: 1400px;
-        animation: zoomIn 0.3s;
+        animation: zoomIn 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        border-radius: 12px;
+        box-shadow: 0 25px 80px rgba(0,0,0,0.5);
     }}
     
     @keyframes fadeIn {{
@@ -328,186 +557,453 @@ st.markdown(f"""
     }}
     
     @keyframes zoomIn {{
-        from {{ transform: scale(0.7); opacity: 0; }}
-        to {{ transform: scale(1); opacity: 1; }}
+        from {{ transform: scale(0.8) translateY(20px); opacity: 0; }}
+        to {{ transform: scale(1) translateY(0); opacity: 1; }}
     }}
     
     .modal-close {{
         position: absolute;
         top: 20px;
         right: 40px;
-        color: #f1f1f1;
-        font-size: 50px;
-        font-weight: bold;
-        transition: 0.3s;
+        color: rgba(255,255,255,0.8);
+        font-size: 44px;
+        font-weight: 300;
+        transition: all var(--transition-fast);
         cursor: pointer;
         z-index: 100000;
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.1);
+        backdrop-filter: blur(10px);
     }}
     
     .modal-close:hover,
     .modal-close:focus {{
         color: {theme['accent']};
+        background: rgba(197,160,89,0.2);
+        transform: rotate(90deg);
     }}
 
-    /* === CITATION BOX === */
+    /* === CITATION BOX - PREMIUM === */
     .citation-box {{
         font-size: 13px;
         color: {text_secondary};
-        background: linear-gradient(135deg, {bg_secondary} 0%, {card_bg} 100%);
-        padding: 14px 18px;
-        border-radius: 10px;
-        border: 1px dashed {theme['accent']};
-        margin-top: 18px;
+        background: linear-gradient(135deg, rgba(30,42,56,0.6) 0%, rgba(22,32,44,0.8) 100%);
+        padding: 18px 22px;
+        border-radius: 12px;
+        border: 1px dashed rgba(197,160,89,0.4);
+        margin-top: 20px;
         font-style: italic;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        box-shadow: var(--shadow-sm);
+        position: relative;
+        overflow: hidden;
+    }}
+    
+    .citation-box::before {{
+        content: '📚';
+        position: absolute;
+        top: 50%;
+        left: -30px;
+        transform: translateY(-50%);
+        font-size: 60px;
+        opacity: 0.05;
     }}
 
-    /* === FILE UPLOADER === */
+    /* === FILE UPLOADER - PREMIUM === */
     [data-testid='stFileUploader'] {{
-        background: {card_bg};
-        border: 3px dashed {theme['accent']};
-        border-radius: 12px;
-        padding: 30px;
+        background: linear-gradient(135deg, rgba(30,42,56,0.5) 0%, rgba(22,32,44,0.7) 100%);
+        border: 2px dashed rgba(197,160,89,0.4);
+        border-radius: 16px;
+        padding: 40px;
         text-align: center;
-        transition: all 0.3s ease;
+        transition: all var(--transition-normal);
+        position: relative;
+        overflow: hidden;
+    }}
+    
+    [data-testid='stFileUploader']::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(45deg, transparent 30%, rgba(197,160,89,0.03) 50%, transparent 70%);
+        background-size: 200% 200%;
+        animation: uploadShimmer 3s ease-in-out infinite;
+    }}
+    
+    @keyframes uploadShimmer {{
+        0% {{ background-position: 200% 200%; }}
+        100% {{ background-position: -200% -200%; }}
     }}
     
     [data-testid='stFileUploader']:hover {{
-        border-color: {theme['accent2']};
-        background: {bg_secondary};
-        box-shadow: 0 5px 15px rgba(197,160,89,0.1);
+        border-color: {theme['accent']};
+        background: linear-gradient(135deg, rgba(30,42,56,0.7) 0%, rgba(22,32,44,0.9) 100%);
+        box-shadow: var(--shadow-lg), var(--shadow-glow);
+        transform: translateY(-2px);
     }}
 
-    /* === DIVIDER === */
+    /* === DIVIDER - PREMIUM === */
     hr {{
         border: none;
-        height: 2px;
-        background: linear-gradient(90deg, transparent, {theme['accent']}, transparent);
-        margin: 30px 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, rgba(197,160,89,0.3) 20%, {theme['accent']} 50%, rgba(197,160,89,0.3) 80%, transparent 100%);
+        margin: 40px 0;
+        position: relative;
+    }}
+    
+    hr::after {{
+        content: '✦';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        background: {theme['primary']};
+        padding: 0 12px;
+        color: {theme['accent']};
+        font-size: 14px;
     }}
 
-    /* === EMPTY STATE === */
+    /* === EMPTY STATE - PREMIUM === */
     .empty-state {{
         text-align: center;
-        padding: 60px 20px;
-        background: {card_bg};
-        border-radius: 16px;
-        border: 3px dashed {theme['accent']};
-        margin: 40px 0;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        padding: 80px 30px;
+        background: linear-gradient(145deg, rgba(30,42,56,0.6) 0%, rgba(22,32,44,0.8) 100%);
+        border-radius: 20px;
+        border: 2px dashed rgba(197,160,89,0.3);
+        margin: 50px 0;
+        box-shadow: var(--shadow-lg);
+        position: relative;
+        overflow: hidden;
+    }}
+    
+    .empty-state::before {{
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(197,160,89,0.05) 0%, transparent 70%);
+        animation: pulse 4s ease-in-out infinite;
+    }}
+    
+    @keyframes pulse {{
+        0%, 100% {{ transform: scale(1); opacity: 0.5; }}
+        50% {{ transform: scale(1.1); opacity: 0.8; }}
     }}
     
     .empty-state h3 {{
-        color: {theme['primary']};
+        color: {theme['accent']};
         border: none;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
+        position: relative;
+        z-index: 1;
+    }}
+    
+    .empty-state p {{
+        position: relative;
+        z-index: 1;
     }}
 
-    /* === LOGIN CARD === */
+    /* === LOGIN CARD - PREMIUM === */
     .login-card {{
-        background: {card_bg};
-        padding: 50px 40px;
-        border-radius: 20px;
-        box-shadow: 0 15px 50px rgba(0,0,0,0.15);
-        border: 2px solid {theme['accent']};
-        animation: fadeInUp 0.6s ease-out;
+        background: linear-gradient(145deg, rgba(30,42,56,0.98) 0%, rgba(22,32,44,0.99) 100%);
+        padding: 60px 50px;
+        border-radius: 24px;
+        box-shadow: var(--shadow-xl), 0 0 60px rgba(197,160,89,0.15);
+        border: 1px solid rgba(197,160,89,0.3);
+        animation: fadeInUp 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+        backdrop-filter: blur(20px);
+        position: relative;
+        overflow: hidden;
+    }}
+    
+    .login-card::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']});
+        background-size: 200% 100%;
+        animation: shimmer 3s ease-in-out infinite;
+    }}
+    
+    .login-card::after {{
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80%;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(197,160,89,0.3), transparent);
     }}
     
     .hero-title {{
-        font-size: clamp(2rem, 5vw, 3rem);
-        color: {theme['primary']};
-        margin-bottom: 15px;
-        font-weight: bold;
+        font-size: clamp(2.2rem, 5vw, 3.5rem);
+        color: {theme['accent']};
+        margin-bottom: 18px;
+        font-weight: 700;
         text-align: center;
+        font-family: 'Playfair Display', serif;
+        letter-spacing: -0.02em;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }}
     
     .hero-subtitle {{
-        font-size: clamp(1rem, 2vw, 1.2rem);
-        color: {text_secondary};
+        font-size: clamp(1rem, 2vw, 1.15rem);
+        color: rgba(253,250,241,0.7);
         text-align: center;
-        margin-bottom: 30px;
-        line-height: 1.6;
+        margin-bottom: 40px;
+        line-height: 1.7;
+        font-family: 'Inter', sans-serif;
+        max-width: 400px;
+        margin-left: auto;
+        margin-right: auto;
     }}
 
-    /* === CREDIT PROGRESS BAR === */
+    /* === CREDIT PROGRESS BAR - PREMIUM === */
     .credit-bar-container {{
-        background: rgba(255,255,255,0.1);
-        border-radius: 10px;
-        padding: 4px;
-        margin: 15px 0;
-        border: 1px solid {theme['accent']};
+        background: rgba(0,0,0,0.3);
+        border-radius: 12px;
+        padding: 5px;
+        margin: 18px 0;
+        border: 1px solid rgba(197,160,89,0.2);
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
     }}
     
     .credit-bar {{
-        height: 10px;
-        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']});
-        border-radius: 8px;
-        transition: width 0.5s ease;
-        box-shadow: 0 0 10px rgba(197,160,89,0.5);
+        height: 12px;
+        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']});
+        background-size: 200% 100%;
+        border-radius: 10px;
+        transition: width 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        box-shadow: 0 0 15px rgba(197,160,89,0.6), inset 0 1px 0 rgba(255,255,255,0.3);
+        animation: gradientMove 3s linear infinite;
+    }}
+    
+    @keyframes gradientMove {{
+        0% {{ background-position: 0% 50%; }}
+        100% {{ background-position: 200% 50%; }}
     }}
 
-    /* === SECTION HEADER === */
+    /* === SECTION HEADER - PREMIUM === */
     .section-header {{
         color: {theme['accent']} !important;
-        font-size: 16px;
-        font-weight: bold;
-        margin-top: 20px;
-        margin-bottom: 10px;
-        padding-bottom: 8px;
-        border-bottom: 2px solid rgba(197,160,89,0.3);
+        font-size: 14px;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        margin-top: 24px;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(197,160,89,0.2);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }}
+    
+    .section-header::before {{
+        content: '◆';
+        font-size: 10px;
+        color: {theme['accent']};
     }}
 
-    /* === MOBILE NAV BUTTONS === */
+    /* === MOBILE NAV BUTTONS - PREMIUM === */
     .mobile-nav {{
         display: none;
         position: fixed;
-        bottom: 20px;
+        bottom: 24px;
         left: 50%;
         transform: translateX(-50%);
         z-index: 1000;
-        background: {theme['primary']};
-        padding: 10px 20px;
-        border-radius: 50px;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        background: linear-gradient(135deg, {theme['primary']} 0%, rgba(12,20,33,0.98) 100%);
+        padding: 12px 24px;
+        border-radius: 60px;
+        box-shadow: var(--shadow-xl), 0 0 30px rgba(197,160,89,0.2);
+        border: 1px solid rgba(197,160,89,0.3);
+        backdrop-filter: blur(20px);
     }}
     
     .mobile-nav button {{
-        background: {theme['accent']};
-        color: white;
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['accent2']} 100%);
+        color: {theme['primary']};
         border: none;
-        padding: 10px 20px;
-        margin: 0 5px;
-        border-radius: 20px;
-        font-size: 18px;
+        padding: 12px 24px;
+        margin: 0 6px;
+        border-radius: 24px;
+        font-size: 16px;
         cursor: pointer;
+        font-weight: 600;
+        transition: all var(--transition-fast);
+        box-shadow: var(--shadow-sm);
+    }}
+    
+    .mobile-nav button:hover {{
+        transform: scale(1.05);
+        box-shadow: var(--shadow-md);
     }}
 
-    /* === RESPONSIVE === */
+    /* === LOADING SPINNER === */
+    .loading-spinner {{
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(197,160,89,0.3);
+        border-radius: 50%;
+        border-top-color: {theme['accent']};
+        animation: spin 1s ease-in-out infinite;
+    }}
+    
+    @keyframes spin {{
+        to {{ transform: rotate(360deg); }}
+    }}
+
+    /* === TOOLTIP STYLES === */
+    [data-tooltip] {{
+        position: relative;
+        cursor: help;
+    }}
+    
+    [data-tooltip]::after {{
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-8px);
+        background: {theme['primary']};
+        color: {theme['accent']};
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: all var(--transition-fast);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid rgba(197,160,89,0.3);
+    }}
+    
+    [data-tooltip]:hover::after {{
+        opacity: 1;
+        transform: translateX(-50%) translateY(-4px);
+    }}
+
+    /* === BADGE / TAG STYLES === */
+    .badge {{
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }}
+    
+    .badge-gold {{
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['accent2']} 100%);
+        color: {theme['primary']};
+    }}
+    
+    .badge-success {{
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+    }}
+
+    /* === RESPONSIVE - ENHANCED === */
     @media (max-width: 768px) {{
         .main {{
-            padding: 1rem 0.5rem;
+            padding: 1rem 0.75rem;
         }}
         
         h1 {{
-            font-size: 1.5rem !important;
+            font-size: 1.6rem !important;
+        }}
+        
+        h1::after, h2::after {{
+            width: 60px;
         }}
         
         .result-box {{
-            padding: 20px !important;
+            padding: 22px !important;
             font-size: 15px !important;
+            border-radius: 14px !important;
         }}
         
         .stButton>button {{
             font-size: 14px !important;
-            padding: 12px 16px !important;
+            padding: 14px 18px !important;
+            border-radius: 10px !important;
+        }}
+        
+        .login-card {{
+            padding: 40px 25px;
+            border-radius: 18px;
+        }}
+        
+        .chat-user, .chat-ai {{
+            padding: 14px 16px;
+            border-radius: 14px 14px 4px 14px;
+        }}
+        
+        .mobile-nav {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        
+        section[data-testid='stSidebar'] {{
+            width: 280px !important;
+        }}
+    }}
+    
+    @media (max-width: 480px) {{
+        .main {{
+            padding: 0.75rem 0.5rem;
+        }}
+        
+        h1 {{
+            font-size: 1.4rem !important;
         }}
         
         .login-card {{
             padding: 30px 20px;
         }}
         
-        .mobile-nav {{
-            display: block;
+        .hero-title {{
+            font-size: 1.8rem !important;
+        }}
+        
+        .hero-subtitle {{
+            font-size: 0.95rem !important;
+        }}
+    }}
+    
+    /* === PRINT STYLES === */
+    @media print {{
+        .stButton, .mobile-nav, section[data-testid='stSidebar'] {{
+            display: none !important;
+        }}
+        
+        .main {{
+            background: white !important;
+        }}
+        
+        .result-box {{
+            border: 1px solid #ccc !important;
+            box-shadow: none !important;
         }}
     }}
     </style>
@@ -616,6 +1112,35 @@ except:
     st.error("Secrets sozlanmagan!")
     st.stop()
 
+# ==========================================
+# DEMO MODE (PITCH / TANLOV UCHUN)
+# ==========================================
+# Eslatma:
+# - DEMO_MODE=True bo'lsa, tizimga kirishda parol so'ralmaydi (faqat email).
+# - Yangi foydalanuvchi birinchi kirishda avtomatik 50 kredit bilan yaratiladi.
+DEMO_MODE = True
+DEFAULT_DEMO_CREDITS = 50
+
+def ensure_demo_user(email: str) -> None:
+    """Agar foydalanuvchi mavjud bo'lmasa, uni demo krediti bilan yaratadi.
+
+    Muhim:
+    - Faqat tanlov/pitch jarayonida qulaylik uchun.
+    - Jadval sxemasi noma'lum bo'lgani uchun minimal fieldlar bilan insert qilinadi.
+    """
+    try:
+        # Avval mavjudligini tekshiramiz
+        res = db.table("profiles").select("email").eq("email", email).execute()
+        if not res.data:
+            db.table("profiles").insert({
+                "email": email,
+                "credits": DEFAULT_DEMO_CREDITS,
+            }).execute()
+    except Exception:
+        # Demo rejimda login to'xtab qolmasligi uchun xatoni yumshoq usulda yutamiz.
+        # Kreditlar baribir 0 bo'lib qolishi mumkin (bazaga yozilmasa).
+        pass
+
 if not st.session_state.auth:
     # === ENHANCED LOGIN PAGE ===
     st.markdown("<br>", unsafe_allow_html=True)
@@ -634,18 +1159,30 @@ if not st.session_state.auth:
         st.markdown("<h2 style='margin-top:30px;'>🔐 Tizimga Kirish</h2>", unsafe_allow_html=True)
         
         email_in = st.text_input("📧 Email manzili", placeholder="example@domain.com")
-        pwd_in = st.text_input("🔑 Parol", type="password", placeholder="Parolingizni kiriting")
-        
+
+        # DEMO_MODE=True bo'lsa, parol maydoni ko'rsatilmaydi (pitch/tanlov uchun qulay).
+        if not DEMO_MODE:
+            pwd_in = st.text_input("🔑 Parol", type="password", placeholder="Parolingizni kiriting")
+
         st.markdown("<br>", unsafe_allow_html=True)
-        
+
         if st.button("✨ TIZIMGA KIRISH"):
-            if pwd_in == CORRECT_PASSWORD:
+            if not email_in:
+                st.warning("⚠️ Iltimos, email manzilini kiriting")
+            elif DEMO_MODE:
                 st.session_state.auth = True
-                st.session_state.u_email = email_in
-                st.toast("✅ Muvaffaqiyatli kirdingiz!", icon="🎉")
+                st.session_state.u_email = email_in.strip().lower()
+                ensure_demo_user(st.session_state.u_email)
+                st.toast("✅ Demo rejimda tizimga kirdingiz!", icon="🎉")
                 st.rerun()
             else:
-                st.error("❌ Parol noto'g'ri! Iltimos, qaytadan urinib ko'ring.")
+                if pwd_in == CORRECT_PASSWORD:
+                    st.session_state.auth = True
+                    st.session_state.u_email = email_in.strip().lower()
+                    st.toast("✅ Muvaffaqiyatli kirdingiz!", icon="🎉")
+                    st.rerun()
+                else:
+                    st.error("❌ Parol noto'g'ri! Iltimos, qaytadan urinib ko'ring.")
     st.stop()
 
 # --- AI ENGINE (UNCHANGED - DO NOT MODIFY) ---
@@ -709,12 +1246,12 @@ def render_page(file_content, page_idx, scale, is_pdf):
 # UI CONSTANTS (DEMO METRICS - NOT LIVE DATA)
 # ==========================================
 # NOTE: These are placeholder values for demo purposes
-DEMO_MANUSCRIPTS_ANALYZED = 10247
-DEMO_LANGUAGES_SUPPORTED = 45
-DEMO_AVG_TIME_MINUTES = 2.3
-DEMO_ACCURACY_RATE = 94.7
-DEMO_ACTIVE_USERS = 1234
-DEMO_COUNTRIES = 12
+DEMO_MANUSCRIPTS_ANALYZED = 2840
+DEMO_LANGUAGES_SUPPORTED = 12
+DEMO_AVG_TIME_MINUTES = 2.5
+DEMO_ACCURACY_RATE = 92.1
+DEMO_ACTIVE_USERS = 180
+DEMO_COUNTRIES = 4
 
 # ==========================================
 # LANDING PAGE FUNCTION (UI ONLY)
