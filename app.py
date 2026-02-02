@@ -44,7 +44,7 @@ if "compare_mode" not in st.session_state:
 if "current_page_index" not in st.session_state:
     st.session_state.current_page_index = 0
 if "show_landing" not in st.session_state:
-    st.session_state.show_landing = True
+    st.session_state.show_landing = False
 
 # ==========================================
 # THEME DEFINITIONS
@@ -59,7 +59,7 @@ THEMES = {
         "bg_dark": "#1a1a1a",
         "bg_dark2": "#2d2d2d"
     },
-    "Moviy Akademik": {
+    "Moviy Professional": {
         "primary": "#1e3a8a",
         "accent": "#3b82f6",
         "accent2": "#60a5fa",
@@ -1211,7 +1211,7 @@ st.markdown(f"""
         if (e.ctrlKey && e.key === 'Enter') {{
             e.preventDefault();
             const analysisBtn = Array.from(document.querySelectorAll('.stButton button'))
-                .find(btn => btn.textContent.includes('AKADEMIK TAHLILNI BOSHLASH'));
+                .find(btn => btn.textContent.includes('TAHLILNI BOSHLASH'));
             if (analysisBtn) analysisBtn.click();
         }}
         
@@ -1363,7 +1363,7 @@ if not st.session_state.auth:
                 st.session_state.auth = True
                 st.session_state.u_email = email_in.strip().lower()
                 ensure_demo_user(st.session_state.u_email)
-                st.toast("✅ Demo rejimda tizimga kirdingiz!", icon="🎉")
+                st.toast("✅ Tizimga muvaffaqiyatli kirdingiz!", icon="🎉")
                 st.rerun()
             else:
                 if pwd_in == CORRECT_PASSWORD:
@@ -1736,141 +1736,23 @@ def render_landing_page():
             </h1>
             <p style='font-size:clamp(1.2rem, 3vw, 1.8rem); color:{text_secondary}; margin-bottom:30px; line-height:1.6;'>
                 Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya qilish uchun<br>
-                sun'iy intellekt asosidagi akademik platforma
+                sun'iy intellekt asosidagi platforma
             </p>
         </div>
     """, unsafe_allow_html=True)
     
-    # CTA Buttons
+    # CTA Button - Single action
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        col_demo, col_learn = st.columns(2)
-        with col_demo:
-            if st.button("▶ DEMO'NI BOSHLASH", key="try_demo_btn", use_container_width=True):
-                st.session_state.show_landing = False
-                st.rerun()
-        with col_learn:
-            if st.button("📖 Batafsil Ma'lumot", key="learn_more_btn", use_container_width=True):
-                st.session_state.show_landing = False
-                st.rerun()
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Three-column layout for Problem/Solution/Impact
-    col1, col2, col3 = st.columns(3)
-    
-    # PROBLEM Section
-    with col1:
-        st.markdown(f"""
-            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
-                        border-left:8px solid #e74c3c; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
-                <h2 style='color:#e74c3c; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
-                    📊 MUAMMO
-                </h2>
-                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>100M+</span><br>
-                        <span style='color:{text_secondary};'>qo'lyozmalar arxivda</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>99%</span><br>
-                        <span style='color:{text_secondary};'>raqamli emas</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>$500-1000</span><br>
-                        <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#e74c3c;'>2-3 hafta</span><br>
-                        <span style='color:{text_secondary};'>manual tahlil vaqti</span>
-                    </li>
-                </ul>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # SOLUTION Section
-    with col2:
-        st.markdown(f"""
-            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
-                        border-left:8px solid #3498db; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
-                <h2 style='color:#3498db; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
-                    ✨ YECHIM
-                </h2>
-                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>AI-powered</span><br>
-                        <span style='color:{text_secondary};'>OCR va tahlil</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>2 daqiqa</span><br>
-                        <span style='color:{text_secondary};'>tahlil vaqti</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>95%</span><br>
-                        <span style='color:{text_secondary};'>aniqlik darajasi</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#3498db;'>$5-10</span><br>
-                        <span style='color:{text_secondary};'>sahifa uchun xarajat</span>
-                    </li>
-                </ul>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # IMPACT Section
-    with col3:
-        st.markdown(f"""
-            <div style='background:{card_bg}; padding:30px; border-radius:15px; 
-                        border-left:8px solid #2ecc71; box-shadow:0 5px 20px rgba(0,0,0,0.1); min-height:400px;'>
-                <h2 style='color:#2ecc71; font-size:1.8rem; margin-bottom:20px; border:none; text-align:left;'>
-                    📈 TA'SIR
-                </h2>
-                <ul style='color:{text_primary}; font-size:1.1rem; line-height:2; list-style:none; padding:0;'>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_MANUSCRIPTS_ANALYZED:,}</span><br>
-                        <span style='color:{text_secondary};'>tahlil qilingan</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_LANGUAGES_SUPPORTED}</span><br>
-                        <span style='color:{text_secondary};'>til qo'llab-quvvatlash</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_COUNTRIES}</span><br>
-                        <span style='color:{text_secondary};'>mamlakatda foydalanilmoqda</span>
-                    </li>
-                    <li style='margin-bottom:15px;'>
-                        <span style='font-size:2rem; font-weight:bold; color:#2ecc71;'>{DEMO_ACTIVE_USERS:,}</span><br>
-                        <span style='color:{text_secondary};'>faol foydalanuvchi</span>
-                    </li>
-                </ul>
-            </div>
-        """, unsafe_allow_html=True)
+        if st.button("▶ BOSHLASH", key="start_btn", use_container_width=True):
+            st.session_state.show_landing = False
+            st.rerun()
     
     st.markdown("<br><br>", unsafe_allow_html=True)
-    
-    # How it Works Section (Expandable)
-    with st.expander("📖 QANDAY ISHLAYDI?", expanded=False):
-        st.markdown(f"""
-            <div style='padding:20px; color:{text_primary};'>
-                <h3 style='color:{theme['accent']}; border:none;'>4 Oddiy Qadam:</h3>
-                <ol style='font-size:1.1rem; line-height:2;'>
-                    <li><b>Yuklash</b> - PDF, PNG, JPG formatidagi qo'lyozma faylini yuklang</li>
-                    <li><b>Sozlash</b> - Til, xat turi va rasm sozlamalarini tanlang</li>
-                    <li><b>Tahlil</b> - AI 2 daqiqada transliteratsiya va tarjima qiladi</li>
-                    <li><b>Export</b> - Natijalarni DOCX, TXT yoki JSON formatida yuklab oling</li>
-                </ol>
-                <p style='margin-top:20px; font-size:1rem; color:{text_secondary};'>
-                    <i>💡 Maslahat: Demo'ni sinab ko'rish uchun yuqoridagi "Demo'ni Boshlash" tugmasini bosing</i>
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # Footer note
     st.markdown(f"""
         <div style='text-align:center; margin-top:60px; padding:30px; background:{bg_secondary}; border-radius:10px;'>
             <p style='color:{text_secondary}; font-size:0.9rem; margin:0;'>
-                📊 Ko'rsatilgan statistik ma'lumotlar demo maqsadida keltirilgan<br>
-                🔬 Tadqiqot: d87809889-dot | 📧 Aloqa uchun: {st.session_state.u_email}
+                 Tadqiqot: d87809889-dot | 📧 Aloqa uchun: {st.session_state.u_email}
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -1960,12 +1842,6 @@ with st.sidebar:
         st.session_state.auth = False
         st.toast("👋 Xayr!", icon="👋")
         st.rerun()
-    
-    # Back to Landing button
-    if not st.session_state.show_landing:
-        if st.button("🏠 Bosh Sahifaga Qaytish", key="back_to_landing"):
-            st.session_state.show_landing = True
-            st.rerun()
 
 # === LANDING PAGE OR MAIN APP ===
 if st.session_state.show_landing:
@@ -2053,35 +1929,61 @@ if file:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
+    if st.button("✨ TAHLILNI BOSHLASH"):
         if current_credits >= len(indices):
-            prompt = f"""Bu qo'lyozma rasmini tahlil qil ({era} davri).
+            prompt = f"""Sen qadimiy qo'lyozmalar bo'yicha EKSPERT PALEOGRAF va FILOLOG sifatida ish ko'r.
+Bu {era} davriga oid qo'lyozma rasmini PROFESSIONAL tahlil qil.
 
-MUHIM: Rasmga qarab manbaning HAQIQIY tilini aniqla (Chig'atoy, Forscha, Arabcha, Eski Turkiy yoki boshqa).
-Foydalanuvchi kutgan til: {lang} - lekin bu faqat yordam uchun, haqiqiy tilni rasmdan aniqla.
+═══════════════════════════════════════════
+📋 TAHLIL STRUKTURASI (Barcha bo'limlar MAJBURIY):
+═══════════════════════════════════════════
 
-VAZIFALAR (tartib bilan):
+## 1. 🔍 MANBA IDENTIFIKATSIYASI
+- **Til**: [Rasmga qarab haqiqiy tilni aniqla: Chig'atoy/Forscha/Arabcha/Eski Turkiy/Aralash]
+- **Yozuv turi**: [Nasta'liq/Naskh/Sulsi/Shikasta/boshqa]
+- **Taxminiy davr**: [Asrni aniqla]
+- **Ishonch darajasi**: [Yuqori/O'rta/Past - sababi bilan]
 
-1. **MANBA TILI**: 
-   Avval rasmga qarab manbaning haqiqiy tilini aniqla va yoz.
+## 2. 📜 TRANSLITERATSIYA (Asl yozuv)
+[Matnni asl yozuvda, harf-harf, qator-qator yoz]
+- Noaniq harflarni [?] bilan belgilab, sabab yoz
+- Yo'qolgan qismlarni [...] bilan ko'rsat
+- Maxsus belgilarni (harakat, nuqta) aniq ko'rsat
 
-2. **TRANSLITERATSIYA (Asl yozuv)**:
-   Matnni asl yozuvda, harf-harf yoz. Qatorlarni saqlagan holda.
+## 3. 🔤 LOTIN TRANSKRIPSIYASI
+[Asl matnni lotin alifbosida yoz - ilmiy transliteratsiya standartida]
 
-3. **TO'LIQ TARJIMA (Zamonaviy o'zbek tiliga)**:
-   Butun matnni zamonaviy o'zbek tiliga yaxlit, oqilona tarjima qil.
-   Tarjima tabiiy va tushunarli bo'lsin.
+## 4. 📖 TO'LIQ TARJIMA (Zamonaviy o'zbek tilida)
+[Butun matnni yaxlit, oqilona, tabiiy o'zbek tiliga tarjima qil]
+- Tarjima mazmunni to'liq aks ettirsin
+- Adabiy va tushunarli til ishlatilsin
 
-4. **IZOHLAR**:
-   Qadimiy yoki tushunarsiz so'zlarni qisqacha izohlash.
+## 5. 📚 LEKSIK-SEMANTIK TAHLIL
+| So'z | Asl shakl | Ma'nosi | Hozirgi o'zbek tili ekvivalenti |
+|------|-----------|---------|--------------------------------|
+[Qadimiy/kam ishlatiladigan so'zlarni jadvalda ko'rsat]
 
-QOIDALAR:
-- Noaniq harflarni [?] bilan belgilang
-- Asl qator tuzilishini saqlang
-- Ortiqcha sharh berma, qisqa bo'l
-- Qisman ko'rinadigan matnni ko'ringan qismigacha yoz
+## 6. 🎓 AKADEMIK IZOHLAR
+- **Paleografik xususiyatlar**: [Yozuv uslubi haqida]
+- **Tarixiy kontekst**: [Davr xususiyatlari]
+- **Til xususiyatlari**: [Grammatik, leksik o'ziga xosliklar]
+- **Mazmun tahlili**: [Qisqacha mazmun va ahamiyati]
+
+## 7. ⚠️ ANIQLIK BAHOSI
+- **Umumiy ishonch**: [0-100%]
+- **Transliteratsiya aniqligi**: [0-100%]
+- **Tarjima aniqligi**: [0-100%]
+- **Qiyinchiliklar**: [Agar bo'lsa, aniq ko'rsat]
+
+═══════════════════════════════════════════
+📌 QOIDALAR:
+═══════════════════════════════════════════
+- Foydalanuvchi ko'rsatgan til ({lang}) faqat YO'NALTIRUVCHI, haqiqiy tilni RASMDAN aniqla
 - Barcha javoblar O'ZBEK TILIDA bo'lsin
-- Manba tilini RASMGA QARAB haqqoniy aniqla"""
+- Har bir bo'lim MAJBURIY - bo'sh qoldirma
+- Ilmiy aniqlik va haqqoniylik - eng muhim
+- Noaniqliklarni YASHIRMA, aniq ko'rsat
+- Bu oddiy tarjima EMAS, AKADEMIK EKSPERTIZA"""
             
             # === PROGRESS TRACKER ===
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
@@ -2179,7 +2081,46 @@ QOIDALAR:
 
     if st.session_state.results:
         st.divider()
-        st.markdown("<h2>📊 Tahlil Natijalari</h2>", unsafe_allow_html=True)
+        
+        # === PROFESSIONAL HEADER ===
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, rgba(30,42,56,0.95) 0%, rgba(22,32,44,0.98) 100%); 
+                    border: 1px solid rgba(197,160,89,0.3); 
+                    border-radius: 16px; 
+                    padding: 24px 30px; 
+                    margin-bottom: 24px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.2);'>
+            <div style='display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;'>
+                <div>
+                    <h2 style='margin: 0; color: {theme["accent"]}; font-family: Playfair Display, serif;'>
+                        📊 Akademik Ekspertiza Natijasi
+                    </h2>
+                    <p style='margin: 8px 0 0 0; color: rgba(253,250,241,0.7); font-size: 14px;'>
+                        🎓 Paleografik tahlil • 🔤 Ilmiy transliteratsiya • 📖 Akademik tarjima
+                    </p>
+                </div>
+                <div style='display: flex; gap: 8px; flex-wrap: wrap;'>
+                    <span style='background: linear-gradient(135deg, {theme["accent"]} 0%, {theme["accent2"]} 100%); 
+                                 color: {theme["primary"]}; 
+                                 padding: 6px 14px; 
+                                 border-radius: 20px; 
+                                 font-size: 12px; 
+                                 font-weight: 600;'>
+                        ✅ TEKSHIRILGAN
+                    </span>
+                    <span style='background: rgba(16,185,129,0.2); 
+                                 color: #10b981; 
+                                 padding: 6px 14px; 
+                                 border-radius: 20px; 
+                                 font-size: 12px; 
+                                 font-weight: 600;
+                                 border: 1px solid rgba(16,185,129,0.3);'>
+                        🔬 AKADEMIK STANDART
+                    </span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
         # === EXPORT FORMAT SELECTOR ===
         col1, col2 = st.columns([3, 1])
