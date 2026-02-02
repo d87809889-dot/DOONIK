@@ -2,7 +2,7 @@
 
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 import pypdfium2 as pdfium
 import io, gc, base64, json
 from datetime import datetime
@@ -275,6 +275,7 @@ st.markdown(f"""
         height: 100%;
         background: linear-gradient(90deg, transparent, rgba(197,160,89,0.2), transparent);
         transition: left 0.5s ease;
+        pointer-events: none;
     }}
     
     .stButton>button:hover::before {{
@@ -330,6 +331,7 @@ st.markdown(f"""
         background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']});
         background-size: 200% 100%;
         animation: shimmer 3s ease-in-out infinite;
+        pointer-events: none;
     }}
     
     @keyframes shimmer {{
@@ -504,6 +506,7 @@ st.markdown(f"""
         padding: 6px 10px;
         border-radius: 8px;
         box-shadow: var(--shadow-sm);
+        pointer-events: none;
     }}
     
     .magnifier-container:hover::before {{
@@ -635,6 +638,8 @@ st.markdown(f"""
         background: linear-gradient(45deg, transparent 30%, rgba(197,160,89,0.03) 50%, transparent 70%);
         background-size: 200% 200%;
         animation: uploadShimmer 3s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 0;
     }}
     
     @keyframes uploadShimmer {{
@@ -647,6 +652,17 @@ st.markdown(f"""
         background: linear-gradient(135deg, rgba(30,42,56,0.7) 0%, rgba(22,32,44,0.9) 100%);
         box-shadow: var(--shadow-lg), var(--shadow-glow);
         transform: translateY(-2px);
+    }}
+    
+    /* Ensure file uploader children are clickable */
+    [data-testid='stFileUploader'] > div,
+    [data-testid='stFileUploader'] button,
+    [data-testid='stFileUploader'] input,
+    [data-testid='stFileUploader'] label,
+    [data-testid='stFileUploader'] section,
+    [data-testid='stFileUploader'] [data-testid] {{
+        position: relative !important;
+        z-index: 1 !important;
     }}
 
     /* === DIVIDER - PREMIUM === */
@@ -692,6 +708,7 @@ st.markdown(f"""
         height: 200%;
         background: radial-gradient(circle, rgba(197,160,89,0.05) 0%, transparent 70%);
         animation: pulse 4s ease-in-out infinite;
+        pointer-events: none;
     }}
     
     @keyframes pulse {{
@@ -735,6 +752,7 @@ st.markdown(f"""
         background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']});
         background-size: 200% 100%;
         animation: shimmer 3s ease-in-out infinite;
+        pointer-events: none;
     }}
     
     .login-card::after {{
@@ -1203,13 +1221,241 @@ model = genai.GenerativeModel(
 # ==========================================
 # 3. YORDAMCHI FUNKSIYALAR (UNCHANGED)
 # ==========================================
-def enhance_image_for_ai(img: Image.Image):
-    """Rasmni AI tahlili uchun optimallashtirish (XATO TUZATILDI)"""
-    img = ImageOps.grayscale(img)
-    img = ImageOps.autocontrast(img, cutoff=1)
-    img = ImageEnhance.Contrast(img).enhance(2.8)
-    img = ImageEnhance.Sharpness(img).enhance(2.5)
-    return img
+
+# ==========================================
+# 3.1 ADVANCED IMAGE PREPROCESSING
+# ==========================================
+def safe_denoise(img: Image.Image) -> Image.Image:
+    """Xavfsiz shovqin olib tashlash - PIL bilan"""
+    try:
+        # Median filter - shovqinni kamaytiradi, chetlarni saqlaydi
+        return img.filter(ImageFilter.MedianFilter(size=3))
+    except Exception:
+        return img  # Xato bo'lsa original qaytaradi
+
+def safe_deskew(img: Image.Image) -> Image.Image:
+    """Xavfsiz qiyshiqlikni to'g'rilash - oddiy usul"""
+    try:
+        # Oddiy autorotate - EXIF asosida
+        return ImageOps.exif_transpose(img) or img
+    except Exception:
+        return img
+
+def adaptive_binarize(img: Image.Image) -> Image.Image:
+    """Matn/fon ajratish - adaptive threshold"""
+    try:
+        # Grayscale bo'lishi kerak
+        if img.mode != 'L':
+            img = img.convert('L')
+        
+        # Oddiy threshold
+        threshold = 128
+        return img.point(lambda p: 255 if p > threshold else 0)
+    except Exception:
+        return img
+
+def optimal_resize(img: Image.Image, target_size: int = 1800) -> Image.Image:
+    """Optimal o'lchamga keltirish - AI uchun eng yaxshi"""
+    try:
+        w, h = img.size
+        max_dim = max(w, h)
+        
+        # Agar kichik bo'lsa - kattalashtiramiz
+        if max_dim < 1200:
+            scale = 1200 / max_dim
+            new_w, new_h = int(w * scale), int(h * scale)
+            return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        
+        # Agar juda katta bo'lsa - kichraytramiz
+        if max_dim > 2400:
+            scale = target_size / max_dim
+            new_w, new_h = int(w * scale), int(h * scale)
+            return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        
+        return img
+    except Exception:
+        return img
+
+def enhance_image_for_ai(img: Image.Image) -> Image.Image:
+    """Rasmni AI tahlili uchun optimallashtirish - YANGILANGAN"""
+    try:
+        # 1. Optimal o'lcham
+        img = optimal_resize(img)
+        
+        # 2. Shovqin olib tashlash
+        img = safe_denoise(img)
+        
+        # 3. Grayscale
+        img = ImageOps.grayscale(img)
+        
+        # 4. Auto-contrast
+        img = ImageOps.autocontrast(img, cutoff=2)
+        
+        # 5. Kontrast oshirish
+        img = ImageEnhance.Contrast(img).enhance(2.2)
+        
+        # 6. Keskinlik
+        img = ImageEnhance.Sharpness(img).enhance(2.0)
+        
+        return img
+    except Exception as e:
+        # Fallback: oddiy usul
+        try:
+            img = ImageOps.grayscale(img)
+            img = ImageOps.autocontrast(img, cutoff=1)
+            img = ImageEnhance.Contrast(img).enhance(2.8)
+            img = ImageEnhance.Sharpness(img).enhance(2.5)
+            return img
+        except:
+            return img
+
+# ==========================================
+# 3.2 SMART CROPPING - Katta rasmlar uchun
+# ==========================================
+def should_split_image(img: Image.Image) -> bool:
+    """Rasm bo'linishi kerakmi?"""
+    w, h = img.size
+    # Agar juda uzun yoki keng bo'lsa
+    return h > 3000 or w > 3000 or (h > 2000 and w > 2000)
+
+def split_image_smart(img: Image.Image) -> list:
+    """Rasmni aqlli bo'laklarga bo'lish"""
+    try:
+        w, h = img.size
+        crops = []
+        
+        # Vertikal bo'lish (asosan)
+        if h > w * 1.5:  # Vertikal rasm
+            # 2 qismga bo'lish (10% overlap)
+            mid = h // 2
+            overlap = int(h * 0.1)
+            
+            crop1 = img.crop((0, 0, w, mid + overlap))
+            crop2 = img.crop((0, mid - overlap, w, h))
+            crops = [crop1, crop2]
+        
+        # Gorizontal bo'lish
+        elif w > h * 1.5:  # Gorizontal rasm
+            mid = w // 2
+            overlap = int(w * 0.1)
+            
+            crop1 = img.crop((0, 0, mid + overlap, h))
+            crop2 = img.crop((mid - overlap, 0, w, h))
+            crops = [crop1, crop2]
+        
+        # Kvadrat - 4 qismga
+        else:
+            mid_w, mid_h = w // 2, h // 2
+            overlap_w = int(w * 0.05)
+            overlap_h = int(h * 0.05)
+            
+            crops = [
+                img.crop((0, 0, mid_w + overlap_w, mid_h + overlap_h)),  # Top-left
+                img.crop((mid_w - overlap_w, 0, w, mid_h + overlap_h)),  # Top-right
+                img.crop((0, mid_h - overlap_h, mid_w + overlap_w, h)),  # Bottom-left
+                img.crop((mid_w - overlap_w, mid_h - overlap_h, w, h))   # Bottom-right
+            ]
+        
+        return crops if crops else [img]
+    except Exception:
+        return [img]
+
+def merge_results(results: list) -> str:
+    """Bo'lak natijalarini birlashtirish"""
+    if not results:
+        return ""
+    if len(results) == 1:
+        return results[0]
+    
+    merged = "📄 **BIRLASHTIRILGAN NATIJA:**\n\n"
+    for i, r in enumerate(results, 1):
+        merged += f"---\n**Qism {i}:**\n{r}\n\n"
+    return merged
+
+# ==========================================
+# 3.3 QUALITY-BASED RETRY
+# ==========================================
+def assess_quality(response_text: str) -> dict:
+    """Javob sifatini baholash"""
+    if not response_text:
+        return {"score": 0, "reason": "Bo'sh javob", "retry": True}
+    
+    text = response_text.lower()
+    
+    # Noaniqlik belgilari
+    unclear_count = text.count("[?]") + text.count("unclear") + text.count("noaniq")
+    
+    # Javob uzunligi
+    word_count = len(response_text.split())
+    
+    # Skor hisoblash
+    score = 100
+    reasons = []
+    
+    if unclear_count > 10:
+        score -= 30
+        reasons.append(f"{unclear_count} noaniq belgi")
+    elif unclear_count > 5:
+        score -= 15
+        reasons.append(f"{unclear_count} noaniq belgi")
+    
+    if word_count < 20:
+        score -= 25
+        reasons.append("Juda qisqa javob")
+    
+    if "error" in text or "xato" in text:
+        score -= 20
+        reasons.append("Xato xabari bor")
+    
+    return {
+        "score": max(0, score),
+        "reason": ", ".join(reasons) if reasons else "Yaxshi",
+        "retry": score < 50
+    }
+
+def analyze_with_retry(model, prompt: str, img: Image.Image, max_retries: int = 2) -> tuple:
+    """Sifat asosida qayta urinish bilan tahlil"""
+    best_result = None
+    best_score = 0
+    
+    for attempt in range(max_retries + 1):
+        try:
+            # Har urinishda rasm sifatini oshiramiz
+            if attempt == 0:
+                processed_img = enhance_image_for_ai(img)
+            elif attempt == 1:
+                # Yuqoriroq kontrast
+                processed_img = enhance_image_for_ai(img)
+                processed_img = ImageEnhance.Contrast(processed_img).enhance(1.3)
+            else:
+                # Binarization
+                processed_img = enhance_image_for_ai(img)
+                processed_img = adaptive_binarize(processed_img)
+            
+            payload = img_to_png_payload(processed_img)
+            resp = model.generate_content([prompt, payload])
+            
+            if resp.candidates and resp.candidates[0].content.parts:
+                result_text = resp.text
+                quality = assess_quality(result_text)
+                
+                if quality["score"] > best_score:
+                    best_result = result_text
+                    best_score = quality["score"]
+                
+                # Yetarlicha yaxshi - to'xtash
+                if quality["score"] >= 70:
+                    return (result_text, quality, attempt + 1)
+                
+                # Retry kerak emas yoki oxirgi urinish
+                if not quality["retry"] or attempt == max_retries:
+                    return (best_result, quality, attempt + 1)
+            
+        except Exception as e:
+            if attempt == max_retries:
+                return (None, {"score": 0, "reason": str(e), "retry": False}, attempt + 1)
+    
+    return (best_result, {"score": best_score, "reason": "Max retry reached", "retry": False}, max_retries + 1)
 
 def img_to_png_payload(img: Image.Image):
     buffered = io.BytesIO()
@@ -1587,29 +1833,90 @@ if file:
     
     if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
         if current_credits >= len(indices):
-            prompt = f"Academic analysis of {lang} manuscript ({era}). 1.Transliteration 2.Translation 3.Expert Notes."
+            prompt = f"""Analyze this {lang} manuscript image ({era}).
+
+TASKS (in order):
+1. **TRANSLITERATION**: Write text exactly as shown, letter-by-letter in original script
+2. **TRANSLATION**: Translate to modern Uzbek accurately
+3. **NOTES**: Briefly explain archaic/unclear words
+
+RULES:
+- Mark unclear letters with [?]
+- Keep original line breaks
+- No extra commentary, be concise
+- If text is partially visible, transcribe visible parts only"""
             
             # === PROGRESS TRACKER ===
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
+            total_attempts = 0
+            quality_issues = []
             
             for i, idx in enumerate(indices):
-                with st.status(f"🔍 Varaq {idx+1} ekspertizadan o'tkazilmoqda..."):
+                with st.status(f"🔍 Varaq {idx+1} ekspertizadan o'tkazilmoqda...") as status:
                     try:
-                        ai_img = enhance_image_for_ai(processed[idx])
-                        resp = model.generate_content([prompt, img_to_png_payload(ai_img)])
-
-                        if resp.candidates and resp.candidates[0].content.parts:
-                            st.session_state.results[idx] = resp.text
-                            use_credit_atomic(st.session_state.u_email)
-                            st.toast(f"✅ Varaq {idx+1} tayyor!", icon="🎉")
-                            st.success(f"✅ Varaq {idx+1} muvaffaqiyatli tahlil qilindi")
+                        current_img = processed[idx]
+                        
+                        # === SMART CROPPING CHECK ===
+                        if should_split_image(current_img):
+                            status.update(label=f"📐 Varaq {idx+1} bo'laklarga bo'linmoqda...")
+                            crops = split_image_smart(current_img)
+                            crop_results = []
+                            
+                            for j, crop in enumerate(crops):
+                                status.update(label=f"🔍 Varaq {idx+1} - Qism {j+1}/{len(crops)}...")
+                                result, quality, attempts = analyze_with_retry(model, prompt, crop, max_retries=1)
+                                total_attempts += attempts
+                                
+                                if result:
+                                    crop_results.append(result)
+                                    if quality["score"] < 70:
+                                        quality_issues.append(f"Varaq {idx+1} qism {j+1}: {quality['reason']}")
+                            
+                            if crop_results:
+                                st.session_state.results[idx] = merge_results(crop_results)
+                                use_credit_atomic(st.session_state.u_email)
+                                st.toast(f"✅ Varaq {idx+1} tayyor! ({len(crops)} qism)", icon="🎉")
+                                st.success(f"✅ Varaq {idx+1} muvaffaqiyatli tahlil qilindi")
+                            else:
+                                st.error(f"⚠️ Varaq {idx+1} tahlil qilinmadi")
+                        
                         else:
-                            st.error("⚠️ AI javob berish imkoniyatiga ega emas")
+                            # === NORMAL ANALYSIS WITH RETRY ===
+                            result, quality, attempts = analyze_with_retry(model, prompt, current_img, max_retries=2)
+                            total_attempts += attempts
+                            
+                            if result:
+                                st.session_state.results[idx] = result
+                                use_credit_atomic(st.session_state.u_email)
+                                
+                                # Quality indicator
+                                if quality["score"] >= 80:
+                                    st.toast(f"✅ Varaq {idx+1} tayyor! (Yuqori sifat)", icon="🎉")
+                                elif quality["score"] >= 50:
+                                    st.toast(f"✅ Varaq {idx+1} tayyor! (O'rtacha sifat)", icon="⚠️")
+                                    quality_issues.append(f"Varaq {idx+1}: {quality['reason']}")
+                                else:
+                                    st.toast(f"⚠️ Varaq {idx+1} tahlil qilindi, lekin sifat past", icon="⚠️")
+                                    quality_issues.append(f"Varaq {idx+1}: {quality['reason']}")
+                                
+                                if attempts > 1:
+                                    st.info(f"ℹ️ {attempts} urinishda tahlil qilindi")
+                                st.success(f"✅ Varaq {idx+1} muvaffaqiyatli tahlil qilindi")
+                            else:
+                                st.error(f"⚠️ Varaq {idx+1}: AI javob berish imkoniyatiga ega emas")
+                                
                     except Exception as e:
                         st.error(f"❌ Xatolik yuz berdi: {e}")
                 
                 # Update progress
                 progress_bar.progress((i+1)/len(indices), text=f"📊 {i+1}/{len(indices)} varaq tahlil qilindi")
+            
+            # === QUALITY SUMMARY ===
+            if quality_issues:
+                with st.expander("⚠️ Sifat ogohlantirishlari", expanded=False):
+                    for issue in quality_issues:
+                        st.warning(issue)
+                    st.info("💡 Tavsiya: Rasmlar sifatini oshiring yoki aniqroq skanerdan foydalaning")
             
             # Save to history
             st.session_state.history.append({
@@ -1617,7 +1924,9 @@ if file:
                 'date': datetime.now().strftime("%d.%m.%Y %H:%M"),
                 'filename': file.name,
                 'results': st.session_state.results.copy(),
-                'chats': st.session_state.chats.copy()
+                'chats': st.session_state.chats.copy(),
+                'quality_issues': quality_issues,
+                'total_attempts': total_attempts
             })
             
             # Keep only last 10
