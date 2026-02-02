@@ -2055,18 +2055,24 @@ if file:
     
     if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
         if current_credits >= len(indices):
-            prompt = f"""Bu {lang} qo'lyozma rasmini ({era}) tahlil qil.
+            prompt = f"""Bu qo'lyozma rasmini tahlil qil ({era} davri).
+
+MUHIM: Rasmga qarab manbaning HAQIQIY tilini aniqla (Chig'atoy, Forscha, Arabcha, Eski Turkiy yoki boshqa).
+Foydalanuvchi kutgan til: {lang} - lekin bu faqat yordam uchun, haqiqiy tilni rasmdan aniqla.
 
 VAZIFALAR (tartib bilan):
 
-1. **TRANSLITERATSIYA (Asl yozuv)**:
+1. **MANBA TILI**: 
+   Avval rasmga qarab manbaning haqiqiy tilini aniqla va yoz.
+
+2. **TRANSLITERATSIYA (Asl yozuv)**:
    Matnni asl yozuvda, harf-harf yoz. Qatorlarni saqlagan holda.
 
-2. **TO'LIQ TARJIMA (Zamonaviy o'zbek tiliga)**:
+3. **TO'LIQ TARJIMA (Zamonaviy o'zbek tiliga)**:
    Butun matnni zamonaviy o'zbek tiliga yaxlit, oqilona tarjima qil.
    Tarjima tabiiy va tushunarli bo'lsin.
 
-3. **IZOHLAR**:
+4. **IZOHLAR**:
    Qadimiy yoki tushunarsiz so'zlarni qisqacha izohlash.
 
 QOIDALAR:
@@ -2074,7 +2080,8 @@ QOIDALAR:
 - Asl qator tuzilishini saqlang
 - Ortiqcha sharh berma, qisqa bo'l
 - Qisman ko'rinadigan matnni ko'ringan qismigacha yoz
-- Barcha javoblar O'ZBEK TILIDA bo'lsin"""
+- Barcha javoblar O'ZBEK TILIDA bo'lsin
+- Manba tilini RASMGA QARAB haqqoniy aniqla"""
             
             # === PROGRESS TRACKER ===
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
