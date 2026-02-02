@@ -616,35 +616,6 @@ except:
     st.error("Secrets sozlanmagan!")
     st.stop()
 
-# ==========================================
-# DEMO MODE (PITCH / TANLOV UCHUN)
-# ==========================================
-# Eslatma:
-# - DEMO_MODE=True bo'lsa, tizimga kirishda parol so'ralmaydi (faqat email).
-# - Yangi foydalanuvchi birinchi kirishda avtomatik 50 kredit bilan yaratiladi.
-DEMO_MODE = True
-DEFAULT_DEMO_CREDITS = 50
-
-def ensure_demo_user(email: str) -> None:
-    """Agar foydalanuvchi mavjud bo'lmasa, uni demo krediti bilan yaratadi.
-
-    Muhim:
-    - Faqat tanlov/pitch jarayonida qulaylik uchun.
-    - Jadval sxemasi noma'lum bo'lgani uchun minimal fieldlar bilan insert qilinadi.
-    """
-    try:
-        # Avval mavjudligini tekshiramiz
-        res = db.table("profiles").select("email").eq("email", email).execute()
-        if not res.data:
-            db.table("profiles").insert({
-                "email": email,
-                "credits": DEFAULT_DEMO_CREDITS,
-            }).execute()
-    except Exception:
-        # Demo rejimda login to'xtab qolmasligi uchun xatoni yumshoq usulda yutamiz.
-        # Kreditlar baribir 0 bo'lib qolishi mumkin (bazaga yozilmasa).
-        pass
-
 if not st.session_state.auth:
     # === ENHANCED LOGIN PAGE ===
     st.markdown("<br>", unsafe_allow_html=True)
@@ -663,30 +634,18 @@ if not st.session_state.auth:
         st.markdown("<h2 style='margin-top:30px;'>🔐 Tizimga Kirish</h2>", unsafe_allow_html=True)
         
         email_in = st.text_input("📧 Email manzili", placeholder="example@domain.com")
-
-        # DEMO_MODE=True bo'lsa, parol maydoni ko'rsatilmaydi (pitch/tanlov uchun qulay).
-        if not DEMO_MODE:
-            pwd_in = st.text_input("🔑 Parol", type="password", placeholder="Parolingizni kiriting")
-
+        pwd_in = st.text_input("🔑 Parol", type="password", placeholder="Parolingizni kiriting")
+        
         st.markdown("<br>", unsafe_allow_html=True)
-
+        
         if st.button("✨ TIZIMGA KIRISH"):
-            if not email_in:
-                st.warning("⚠️ Iltimos, email manzilini kiriting")
-            elif DEMO_MODE:
+            if pwd_in == CORRECT_PASSWORD:
                 st.session_state.auth = True
-                st.session_state.u_email = email_in.strip().lower()
-                ensure_demo_user(st.session_state.u_email)
-                st.toast("✅ Demo rejimda tizimga kirdingiz!", icon="🎉")
+                st.session_state.u_email = email_in
+                st.toast("✅ Muvaffaqiyatli kirdingiz!", icon="🎉")
                 st.rerun()
             else:
-                if pwd_in == CORRECT_PASSWORD:
-                    st.session_state.auth = True
-                    st.session_state.u_email = email_in.strip().lower()
-                    st.toast("✅ Muvaffaqiyatli kirdingiz!", icon="🎉")
-                    st.rerun()
-                else:
-                    st.error("❌ Parol noto'g'ri! Iltimos, qaytadan urinib ko'ring.")
+                st.error("❌ Parol noto'g'ri! Iltimos, qaytadan urinib ko'ring.")
     st.stop()
 
 # --- AI ENGINE (UNCHANGED - DO NOT MODIFY) ---
@@ -750,12 +709,12 @@ def render_page(file_content, page_idx, scale, is_pdf):
 # UI CONSTANTS (DEMO METRICS - NOT LIVE DATA)
 # ==========================================
 # NOTE: These are placeholder values for demo purposes
-DEMO_MANUSCRIPTS_ANALYZED = 2840
-DEMO_LANGUAGES_SUPPORTED = 12
-DEMO_AVG_TIME_MINUTES = 2.5
-DEMO_ACCURACY_RATE = 92.1
-DEMO_ACTIVE_USERS = 180
-DEMO_COUNTRIES = 4
+DEMO_MANUSCRIPTS_ANALYZED = 10247
+DEMO_LANGUAGES_SUPPORTED = 45
+DEMO_AVG_TIME_MINUTES = 2.3
+DEMO_ACCURACY_RATE = 94.7
+DEMO_ACTIVE_USERS = 1234
+DEMO_COUNTRIES = 12
 
 # ==========================================
 # LANDING PAGE FUNCTION (UI ONLY)
