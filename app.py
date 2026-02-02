@@ -345,6 +345,49 @@ st.markdown(f"""
         transform: translateY(-2px);
     }}
     
+    /* Result box ichidagi markdown elementlari */
+    .result-box h1, .result-box h2, .result-box h3 {{
+        color: {theme['accent']} !important;
+        font-family: 'Playfair Display', serif !important;
+        margin-top: 20px !important;
+        margin-bottom: 12px !important;
+        padding-bottom: 8px !important;
+        border-bottom: 1px solid rgba(197,160,89,0.2) !important;
+    }}
+    
+    .result-box h2 {{
+        font-size: 1.3rem !important;
+    }}
+    
+    .result-box h3 {{
+        font-size: 1.1rem !important;
+    }}
+    
+    .result-box p {{
+        margin-bottom: 12px !important;
+        line-height: 1.9 !important;
+    }}
+    
+    .result-box strong, .result-box b {{
+        color: {theme['accent2']} !important;
+    }}
+    
+    .result-box hr {{
+        border: none !important;
+        height: 1px !important;
+        background: linear-gradient(90deg, transparent, rgba(197,160,89,0.3), transparent) !important;
+        margin: 16px 0 !important;
+    }}
+    
+    .result-box ul, .result-box ol {{
+        padding-left: 20px !important;
+        margin-bottom: 12px !important;
+    }}
+    
+    .result-box li {{
+        margin-bottom: 6px !important;
+    }}
+    
     @keyframes fadeInUp {{
         from {{
             opacity: 0;
@@ -654,6 +697,66 @@ st.markdown(f"""
         transform: translateY(-2px);
     }}
     
+    /* === EXPANDER STYLING === */
+    .streamlit-expanderHeader {{
+        background: linear-gradient(135deg, rgba(30,42,56,0.8) 0%, rgba(22,32,44,0.9) 100%) !important;
+        border: 1px solid rgba(197,160,89,0.2) !important;
+        border-radius: 12px !important;
+        padding: 14px 18px !important;
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 600 !important;
+        color: {theme['accent']} !important;
+        transition: all var(--transition-normal) !important;
+    }}
+    
+    .streamlit-expanderHeader:hover {{
+        background: linear-gradient(135deg, rgba(30,42,56,0.95) 0%, rgba(22,32,44,1) 100%) !important;
+        border-color: {theme['accent']} !important;
+        box-shadow: var(--shadow-md) !important;
+    }}
+    
+    .streamlit-expanderContent {{
+        background: rgba(22,32,44,0.5) !important;
+        border: 1px solid rgba(197,160,89,0.1) !important;
+        border-top: none !important;
+        border-radius: 0 0 12px 12px !important;
+        padding: 16px !important;
+    }}
+    
+    /* === STATUS INDICATOR === */
+    [data-testid='stStatusWidget'] {{
+        background: linear-gradient(135deg, rgba(30,42,56,0.9) 0%, rgba(22,32,44,0.95) 100%) !important;
+        border: 1px solid rgba(197,160,89,0.2) !important;
+        border-radius: 12px !important;
+        padding: 16px !important;
+    }}
+    
+    /* === SELECTBOX STYLING === */
+    [data-testid='stSelectbox'] > div > div {{
+        background: linear-gradient(135deg, rgba(30,42,56,0.8) 0%, rgba(22,32,44,0.9) 100%) !important;
+        border: 1px solid rgba(197,160,89,0.3) !important;
+        border-radius: 10px !important;
+        color: {text_primary} !important;
+    }}
+    
+    [data-testid='stSelectbox'] > div > div:hover {{
+        border-color: {theme['accent']} !important;
+    }}
+    
+    /* === MULTISELECT STYLING === */
+    [data-testid='stMultiSelect'] > div > div {{
+        background: linear-gradient(135deg, rgba(30,42,56,0.8) 0%, rgba(22,32,44,0.9) 100%) !important;
+        border: 1px solid rgba(197,160,89,0.3) !important;
+        border-radius: 10px !important;
+    }}
+    
+    [data-testid='stMultiSelect'] span[data-baseweb='tag'] {{
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['accent2']} 100%) !important;
+        color: {theme['primary']} !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+    }}
+
     /* Ensure file uploader children are clickable */
     [data-testid='stFileUploader'] > div,
     [data-testid='stFileUploader'] button,
@@ -870,6 +973,75 @@ st.markdown(f"""
     .mobile-nav button:hover {{
         transform: scale(1.05);
         box-shadow: var(--shadow-md);
+    }}
+
+    /* === PROGRESS BAR STYLING === */
+    [data-testid='stProgress'] > div > div > div {{
+        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']}) !important;
+        background-size: 200% 100% !important;
+        animation: gradientMove 2s linear infinite !important;
+        border-radius: 8px !important;
+    }}
+    
+    [data-testid='stProgress'] {{
+        background: rgba(0,0,0,0.2) !important;
+        border-radius: 8px !important;
+    }}
+
+    /* === TOAST STYLING === */
+    [data-testid='stToast'] {{
+        background: linear-gradient(135deg, rgba(30,42,56,0.98) 0%, rgba(22,32,44,0.99) 100%) !important;
+        border: 1px solid rgba(197,160,89,0.3) !important;
+        border-radius: 12px !important;
+        box-shadow: var(--shadow-lg), 0 0 30px rgba(197,160,89,0.15) !important;
+        backdrop-filter: blur(20px) !important;
+    }}
+    
+    [data-testid='stToast'] > div {{
+        color: {text_primary} !important;
+        font-family: 'Inter', sans-serif !important;
+    }}
+
+    /* === ALERT/WARNING BOXES === */
+    [data-testid='stAlert'] {{
+        background: linear-gradient(135deg, rgba(30,42,56,0.9) 0%, rgba(22,32,44,0.95) 100%) !important;
+        border-radius: 12px !important;
+        border-left: 4px solid !important;
+        padding: 16px 20px !important;
+    }}
+    
+    .stSuccess {{
+        border-left-color: #10b981 !important;
+    }}
+    
+    .stWarning {{
+        border-left-color: #f59e0b !important;
+    }}
+    
+    .stError {{
+        border-left-color: #ef4444 !important;
+    }}
+    
+    .stInfo {{
+        border-left-color: {theme['accent']} !important;
+    }}
+
+    /* === DOWNLOAD BUTTON === */
+    [data-testid='stDownloadButton'] > button {{
+        background: linear-gradient(135deg, {theme['accent']} 0%, {theme['accent2']} 100%) !important;
+        color: {theme['primary']} !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 12px !important;
+        padding: 16px 28px !important;
+        font-size: 15px !important;
+        transition: all var(--transition-normal) !important;
+        box-shadow: var(--shadow-md) !important;
+    }}
+    
+    [data-testid='stDownloadButton'] > button:hover {{
+        transform: translateY(-3px) !important;
+        box-shadow: var(--shadow-lg), var(--shadow-glow) !important;
     }}
 
     /* === LOADING SPINNER === */
@@ -1361,15 +1533,65 @@ def split_image_smart(img: Image.Image) -> list:
         return [img]
 
 def merge_results(results: list) -> str:
-    """Bo'lak natijalarini birlashtirish"""
+    """Bo'lak natijalarini birlashtirish va yaxlit ko'rinishga keltirish"""
     if not results:
         return ""
     if len(results) == 1:
         return results[0]
     
-    merged = "📄 **BIRLASHTIRILGAN NATIJA:**\n\n"
-    for i, r in enumerate(results, 1):
-        merged += f"---\n**Qism {i}:**\n{r}\n\n"
+    # Bo'laklarni birlashtirish
+    all_transliterations = []
+    all_translations = []
+    all_notes = []
+    
+    for r in results:
+        # Har bir qismdan bo'limlarni ajratib olish
+        text = r.strip()
+        
+        # Transliteratsiya qismini topish
+        trans_start = text.lower().find("transliter")
+        tarj_start = text.lower().find("tarjima") if text.lower().find("tarjima") > 0 else text.lower().find("translation")
+        izoh_start = text.lower().find("izoh") if text.lower().find("izoh") > 0 else text.lower().find("note")
+        
+        if trans_start >= 0 and tarj_start > trans_start:
+            all_transliterations.append(text[trans_start:tarj_start].strip())
+        
+        if tarj_start >= 0 and izoh_start > tarj_start:
+            all_translations.append(text[tarj_start:izoh_start].strip())
+        elif tarj_start >= 0:
+            all_translations.append(text[tarj_start:].strip())
+        
+        if izoh_start >= 0:
+            all_notes.append(text[izoh_start:].strip())
+    
+    # Yaxlit natija shakllantirish
+    merged = "📜 **YAXLIT TAHLIL NATIJASI**\n\n"
+    merged += "---\n\n"
+    
+    if all_transliterations:
+        merged += "## 1. TRANSLITERATSIYA (Asl yozuv)\n\n"
+        for i, t in enumerate(all_transliterations, 1):
+            # Sarlavhalarni olib tashlash
+            clean = t.replace("**TRANSLITERATSIYA**:", "").replace("**TRANSLITERATION**:", "").replace("1.", "").strip()
+            if clean:
+                merged += f"{clean}\n\n"
+        merged += "---\n\n"
+    
+    if all_translations:
+        merged += "## 2. TO'LIQ TARJIMA (O'zbek tilida)\n\n"
+        for i, t in enumerate(all_translations, 1):
+            clean = t.replace("**TARJIMA**:", "").replace("**TRANSLATION**:", "").replace("**TO'LIQ TARJIMA**:", "").replace("2.", "").strip()
+            if clean:
+                merged += f"{clean}\n\n"
+        merged += "---\n\n"
+    
+    if all_notes:
+        merged += "## 3. IZOHLAR\n\n"
+        for i, t in enumerate(all_notes, 1):
+            clean = t.replace("**IZOHLAR**:", "").replace("**NOTES**:", "").replace("3.", "").strip()
+            if clean:
+                merged += f"{clean}\n\n"
+    
     return merged
 
 # ==========================================
@@ -1833,18 +2055,26 @@ if file:
     
     if st.button("✨ AKADEMIK TAHLILNI BOSHLASH"):
         if current_credits >= len(indices):
-            prompt = f"""Analyze this {lang} manuscript image ({era}).
+            prompt = f"""Bu {lang} qo'lyozma rasmini ({era}) tahlil qil.
 
-TASKS (in order):
-1. **TRANSLITERATION**: Write text exactly as shown, letter-by-letter in original script
-2. **TRANSLATION**: Translate to modern Uzbek accurately
-3. **NOTES**: Briefly explain archaic/unclear words
+VAZIFALAR (tartib bilan):
 
-RULES:
-- Mark unclear letters with [?]
-- Keep original line breaks
-- No extra commentary, be concise
-- If text is partially visible, transcribe visible parts only"""
+1. **TRANSLITERATSIYA (Asl yozuv)**:
+   Matnni asl yozuvda, harf-harf yoz. Qatorlarni saqlagan holda.
+
+2. **TO'LIQ TARJIMA (Zamonaviy o'zbek tiliga)**:
+   Butun matnni zamonaviy o'zbek tiliga yaxlit, oqilona tarjima qil.
+   Tarjima tabiiy va tushunarli bo'lsin.
+
+3. **IZOHLAR**:
+   Qadimiy yoki tushunarsiz so'zlarni qisqacha izohlash.
+
+QOIDALAR:
+- Noaniq harflarni [?] bilan belgilang
+- Asl qator tuzilishini saqlang
+- Ortiqcha sharh berma, qisqa bo'l
+- Qisman ko'rinadigan matnni ko'ringan qismigacha yoz
+- Barcha javoblar O'ZBEK TILIDA bo'lsin"""
             
             # === PROGRESS TRACKER ===
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
@@ -1979,7 +2209,11 @@ RULES:
                 st.markdown("</div>", unsafe_allow_html=True)
 
             with c2:
-                st.markdown(f"<div class='result-box'>{st.session_state.results[idx]}</div>", unsafe_allow_html=True)
+                # Natijani markdown sifatida ko'rsatish
+                st.markdown("<div class='result-box'>", unsafe_allow_html=True)
+                st.markdown(st.session_state.results[idx])
+                st.markdown("</div>", unsafe_allow_html=True)
+                
                 cite = f"Iqtibos: Manuscript AI (2026). Varaq {idx+1} tahlili ({lang}). Ekspert: d87809889-dot. Sana: {today}."
                 st.markdown(f"<div class='citation-box'>📌 {cite}</div>", unsafe_allow_html=True)
 
@@ -2006,8 +2240,19 @@ RULES:
                 if st.button(f"📤 So'rash", key=f"btn_{idx}"):
                     if q:
                         with st.spinner("🤖 AI javob tayyorlayapti..."):
+                            chat_prompt = f"""Qo'lyozma hujjati haqida savol berildi.
+
+HUJJAT MAZMUNI:
+{st.session_state.results[idx]}
+
+SAVOL: {q}
+
+QOIDALAR:
+- Javobni O'ZBEK TILIDA ber
+- Qisqa va aniq javob ber
+- Agar javob hujjatda bo'lmasa, shuni ayt"""
                             chat_res = model.generate_content([
-                                f"Hujjat: {st.session_state.results[idx]}\nQ: {q}",
+                                chat_prompt,
                                 img_to_png_payload(processed[idx])
                             ])
                             st.session_state.chats[idx].append({"q": q, "a": chat_res.text})
