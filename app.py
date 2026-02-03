@@ -1385,12 +1385,12 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
 }
 
-# Generation config - aniqlik uchun past temperature
+# Generation config - aniqlik uchun nol temperature
 generation_config = genai.GenerationConfig(
-    temperature=0.1,  # Past = aniqroq, izchil javoblar
+    temperature=0.0,  # 0 = eng deterministik, har safar bir xil natija
     top_p=0.95,
     top_k=40,
-    max_output_tokens=8192,
+    max_output_tokens=4096,
 )
 
 model = genai.GenerativeModel(
@@ -1436,20 +1436,20 @@ def adaptive_binarize(img: Image.Image) -> Image.Image:
     except Exception:
         return img
 
-def optimal_resize(img: Image.Image, target_size: int = 1800) -> Image.Image:
-    """Optimal o'lchamga keltirish - AI uchun eng yaxshi"""
+def optimal_resize(img: Image.Image, target_size: int = 1400) -> Image.Image:
+    """Optimal o'lchamga keltirish - AI uchun eng yaxshi va TEZKOR"""
     try:
         w, h = img.size
         max_dim = max(w, h)
         
-        # Agar kichik bo'lsa - kattalashtiramiz
-        if max_dim < 1200:
-            scale = 1200 / max_dim
+        # Agar kichik bo'lsa - kattalashtiramiz (minimal)
+        if max_dim < 800:
+            scale = 1000 / max_dim
             new_w, new_h = int(w * scale), int(h * scale)
             return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
         
-        # Agar juda katta bo'lsa - kichraytramiz
-        if max_dim > 2400:
+        # Agar katta bo'lsa - ALBATTA kichraytramiz (tezlik uchun muhim!)
+        if max_dim > 1600:
             scale = target_size / max_dim
             new_w, new_h = int(w * scale), int(h * scale)
             return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
@@ -1459,32 +1459,22 @@ def optimal_resize(img: Image.Image, target_size: int = 1800) -> Image.Image:
         return img
 
 def enhance_image_for_ai(img: Image.Image) -> Image.Image:
-    """Rasmni AI tahlili uchun optimallashtirish - YAXSHILANGAN"""
+    """Rasmni AI tahlili uchun optimallashtirish - TEZKOR versiya"""
     try:
-        # 1. Optimal o'lcham (AI uchun eng yaxshi: 1600-2000px)
-        img = optimal_resize(img, target_size=1800)
+        # 1. BIRINCHI: O'lchamni kamaytirish (eng muhim tezlik uchun!)
+        img = optimal_resize(img, target_size=1400)
         
-        # 2. Shovqin olib tashlash
-        img = safe_denoise(img)
-        
-        # 3. Grayscale
+        # 2. Grayscale - tez operatsiya
         img = ImageOps.grayscale(img)
         
-        # 4. Auto-contrast - qorong'i va yorug' joylarni muvozanatlash
+        # 3. Auto-contrast - tez va samarali
         img = ImageOps.autocontrast(img, cutoff=1)
         
-        # 5. Equalize - histogram tekislash (CLAHE o'rniga PIL versiyasi)
-        # Bu qorong'i qismlardagi matnni yaxshiroq ko'rsatadi
-        img = ImageOps.equalize(img)
+        # 4. Kontrast oshirish - matn va fon orasini kuchaytirish
+        img = ImageEnhance.Contrast(img).enhance(1.6)
         
-        # 6. Kontrast oshirish - matn va fon orasini kuchaytirish
-        img = ImageEnhance.Contrast(img).enhance(1.8)
-        
-        # 7. Keskinlik - harflar chetlarini aniqlashtirish
-        img = ImageEnhance.Sharpness(img).enhance(1.5)
-        
-        # 8. Unsharp mask - mayda detallarni oshirish
-        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=100, threshold=3))
+        # 5. Keskinlik - harflar chetlarini aniqlashtirish
+        img = ImageEnhance.Sharpness(img).enhance(1.4)
         
         return img
     except Exception as e:
@@ -1492,8 +1482,7 @@ def enhance_image_for_ai(img: Image.Image) -> Image.Image:
         try:
             img = ImageOps.grayscale(img)
             img = ImageOps.autocontrast(img, cutoff=1)
-            img = ImageEnhance.Contrast(img).enhance(2.0)
-            img = ImageEnhance.Sharpness(img).enhance(1.5)
+            img = ImageEnhance.Contrast(img).enhance(1.8)
             return img
         except:
             return img
@@ -1685,50 +1674,40 @@ def assess_quality(response_text: str) -> dict:
     }
 
 def analyze_with_retry(model, prompt: str, img: Image.Image, max_retries: int = 2) -> tuple:
-    """Sifat asosida qayta urinish bilan tahlil - YAXSHILANGAN"""
-    best_result = None
-    best_score = 0
+    """Sifat asosida qayta urinish bilan tahlil - DUAL-PASS versiya"""
     
-    for attempt in range(max_retries + 1):
+    # BIRINCHI: Dual-pass tahlil qilish (2 xil usulda)
+    result, quality, passes = dual_pass_analyze(model, prompt, img)
+    
+    # Agar yaxshi natija bo'lsa - qaytarish
+    if result and quality["score"] >= 70:
+        return (result, quality, passes)
+    
+    # Agar natija yomon bo'lsa - binarization bilan qayta urinish
+    if quality["score"] < 50:
         try:
-            # Har urinishda rasm sifatini turlicha tayyorlaymiz
-            if attempt == 0:
-                # 1-urinish: standart preprocessing
-                processed_img = enhance_image_for_ai(img)
-            elif attempt == 1:
-                # 2-urinish: yuqoriroq kontrast + keskinlik
-                processed_img = enhance_image_for_ai(img)
-                processed_img = ImageEnhance.Contrast(processed_img).enhance(1.4)
-                processed_img = ImageEnhance.Sharpness(processed_img).enhance(1.3)
-            else:
-                # 3-urinish: binarization (qora-oq)
-                processed_img = enhance_image_for_ai(img)
-                processed_img = adaptive_binarize(processed_img)
+            processed_img = enhance_image_for_ai(img)
+            processed_img = adaptive_binarize(processed_img)
             
             payload = img_to_png_payload(processed_img)
             resp = model.generate_content([prompt, payload])
             
             if resp.candidates and resp.candidates[0].content.parts:
                 result_text = resp.text
-                quality = assess_quality(result_text)
+                new_quality = assess_quality(result_text)
                 
-                if quality["score"] > best_score:
-                    best_result = result_text
-                    best_score = quality["score"]
-                
-                # Yetarlicha yaxshi - to'xtash (75% va undan yuqori)
-                if quality["score"] >= 75:
-                    return (result_text, quality, attempt + 1)
-                
-                # Retry kerak emas yoki oxirgi urinish
-                if not quality["retry"] or attempt == max_retries:
-                    return (best_result, {"score": best_score, "reason": quality["reason"], "retry": False}, attempt + 1)
-            
-        except Exception as e:
-            if attempt == max_retries:
-                return (None, {"score": 0, "reason": str(e)[:100], "retry": False}, attempt + 1)
+                # Agar yangi natija yaxshiroq bo'lsa
+                if new_quality["score"] > quality["score"]:
+                    final_text = post_process_result(result_text)
+                    return (final_text, new_quality, passes + 1)
+        except:
+            pass
     
-    return (best_result, {"score": best_score, "reason": "Max retry reached", "retry": False}, max_retries + 1)
+    # Post-processing qo'llash va qaytarish
+    if result:
+        result = post_process_result(result)
+    
+    return (result, quality, passes)
 
 def img_to_png_payload(img: Image.Image):
     """Rasmni yuqori sifatli PNG formatga o'tkazish"""
@@ -1737,6 +1716,126 @@ def img_to_png_payload(img: Image.Image):
     # compress_level=6 - muvozanat (0=tez, 9=kichik hajm)
     img.save(buffered, format="PNG", optimize=True, compress_level=6)
     return {"mime_type": "image/png", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
+
+
+def post_process_result(result_text: str) -> str:
+    """AI natijasini tozalash va formatlash - POST-PROCESSING"""
+    if not result_text:
+        return result_text
+    
+    text = result_text.strip()
+    
+    # 1. Bo'sh qatorlarni tozalash (3+ bo'sh qator → 2 ta)
+    import re
+    text = re.sub(r'\n{4,}', '\n\n\n', text)
+    
+    # 2. Jadval formatini to'g'rilash
+    lines = text.split('\n')
+    fixed_lines = []
+    
+    for line in lines:
+        # Jadval qatorlarini tekshirish
+        if '|' in line:
+            # Boshi va oxiridagi | ni tekshirish
+            stripped = line.strip()
+            if stripped and not stripped.startswith('|'):
+                stripped = '| ' + stripped
+            if stripped and not stripped.endswith('|'):
+                stripped = stripped + ' |'
+            fixed_lines.append(stripped)
+        else:
+            fixed_lines.append(line)
+    
+    text = '\n'.join(fixed_lines)
+    
+    # 3. Bo'lim sarlavhalarini standartlashtirish
+    section_fixes = [
+        (r'##\s*1[\.\)]\s*', '## 1. '),
+        (r'##\s*2[\.\)]\s*', '## 2. '),
+        (r'##\s*3[\.\)]\s*', '## 3. '),
+        (r'##\s*4[\.\)]\s*', '## 4. '),
+        (r'##\s*5[\.\)]\s*', '## 5. '),
+        (r'##\s*6[\.\)]\s*', '## 6. '),
+        (r'##\s*7[\.\)]\s*', '## 7. '),
+    ]
+    
+    for pattern, replacement in section_fixes:
+        text = re.sub(pattern, replacement, text)
+    
+    # 4. Noaniq belgilarni standartlashtirish
+    text = text.replace('[unclear]', '[?]')
+    text = text.replace('[noaniq]', '[?]')
+    text = text.replace('[ ? ]', '[?]')
+    text = text.replace('[  ?  ]', '[?]')
+    
+    # 5. Foiz belgilarini tozalash
+    text = re.sub(r'(\d+)\s*%', r'\1%', text)
+    
+    return text
+
+
+def dual_pass_analyze(model, prompt: str, img: Image.Image) -> tuple:
+    """Dual-Pass Tahlil - 2 xil usulda tahlil qilib, eng yaxshisini tanlash"""
+    results = []
+    
+    # === PASS 1: Standart preprocessing ===
+    try:
+        processed_img1 = enhance_image_for_ai(img)
+        payload1 = img_to_png_payload(processed_img1)
+        resp1 = model.generate_content([prompt, payload1])
+        
+        if resp1.candidates and resp1.candidates[0].content.parts:
+            result1 = resp1.text
+            quality1 = assess_quality(result1)
+            results.append({
+                'text': result1,
+                'quality': quality1,
+                'method': 'standard'
+            })
+    except Exception as e:
+        pass  # Xato bo'lsa keyingi usulga o'tamiz
+    
+    # === PASS 2: Yuqori kontrast preprocessing ===
+    try:
+        processed_img2 = enhance_image_for_ai(img)
+        # Qo'shimcha kontrast va keskinlik
+        processed_img2 = ImageEnhance.Contrast(processed_img2).enhance(1.5)
+        processed_img2 = ImageEnhance.Sharpness(processed_img2).enhance(1.3)
+        
+        payload2 = img_to_png_payload(processed_img2)
+        resp2 = model.generate_content([prompt, payload2])
+        
+        if resp2.candidates and resp2.candidates[0].content.parts:
+            result2 = resp2.text
+            quality2 = assess_quality(result2)
+            results.append({
+                'text': result2,
+                'quality': quality2,
+                'method': 'high_contrast'
+            })
+    except Exception as e:
+        pass
+    
+    # === ENG YAXSHI NATIJANI TANLASH ===
+    if not results:
+        return (None, {"score": 0, "reason": "Hech qanday natija olinmadi", "retry": False}, 0)
+    
+    # Eng yuqori sifatli natijani tanlash
+    best = max(results, key=lambda x: x['quality']['score'])
+    
+    # Post-processing qo'llash
+    final_text = post_process_result(best['text'])
+    
+    # Agar ikkala natija ham yaxshi bo'lsa, uzunroq natijani olish
+    if len(results) == 2:
+        score_diff = abs(results[0]['quality']['score'] - results[1]['quality']['score'])
+        if score_diff < 10:  # Skorlar yaqin bo'lsa
+            # Uzunroq javobni olish (ko'proq ma'lumot)
+            longer = max(results, key=lambda x: len(x['text']))
+            final_text = post_process_result(longer['text'])
+            best = longer
+    
+    return (final_text, best['quality'], len(results))
 
 def fetch_live_credits(email: str):
     try:
