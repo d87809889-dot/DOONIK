@@ -1384,10 +1384,20 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
 }
+
+# Generation config - aniqlik uchun past temperature
+generation_config = genai.GenerationConfig(
+    temperature=0.1,  # Past = aniqroq, izchil javoblar
+    top_p=0.95,
+    top_k=40,
+    max_output_tokens=8192,
+)
+
 model = genai.GenerativeModel(
     model_name="gemini-flash-latest",
     system_instruction=system_instruction,
-    safety_settings=safety_settings
+    safety_settings=safety_settings,
+    generation_config=generation_config
 )
 
 # ==========================================
@@ -1449,10 +1459,10 @@ def optimal_resize(img: Image.Image, target_size: int = 1800) -> Image.Image:
         return img
 
 def enhance_image_for_ai(img: Image.Image) -> Image.Image:
-    """Rasmni AI tahlili uchun optimallashtirish - YANGILANGAN"""
+    """Rasmni AI tahlili uchun optimallashtirish - YAXSHILANGAN"""
     try:
-        # 1. Optimal o'lcham
-        img = optimal_resize(img)
+        # 1. Optimal o'lcham (AI uchun eng yaxshi: 1600-2000px)
+        img = optimal_resize(img, target_size=1800)
         
         # 2. Shovqin olib tashlash
         img = safe_denoise(img)
@@ -1460,23 +1470,30 @@ def enhance_image_for_ai(img: Image.Image) -> Image.Image:
         # 3. Grayscale
         img = ImageOps.grayscale(img)
         
-        # 4. Auto-contrast
-        img = ImageOps.autocontrast(img, cutoff=2)
+        # 4. Auto-contrast - qorong'i va yorug' joylarni muvozanatlash
+        img = ImageOps.autocontrast(img, cutoff=1)
         
-        # 5. Kontrast oshirish
-        img = ImageEnhance.Contrast(img).enhance(2.2)
+        # 5. Equalize - histogram tekislash (CLAHE o'rniga PIL versiyasi)
+        # Bu qorong'i qismlardagi matnni yaxshiroq ko'rsatadi
+        img = ImageOps.equalize(img)
         
-        # 6. Keskinlik
-        img = ImageEnhance.Sharpness(img).enhance(2.0)
+        # 6. Kontrast oshirish - matn va fon orasini kuchaytirish
+        img = ImageEnhance.Contrast(img).enhance(1.8)
+        
+        # 7. Keskinlik - harflar chetlarini aniqlashtirish
+        img = ImageEnhance.Sharpness(img).enhance(1.5)
+        
+        # 8. Unsharp mask - mayda detallarni oshirish
+        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=100, threshold=3))
         
         return img
     except Exception as e:
-        # Fallback: oddiy usul
+        # Fallback: minimal xavfsiz usul
         try:
             img = ImageOps.grayscale(img)
             img = ImageOps.autocontrast(img, cutoff=1)
-            img = ImageEnhance.Contrast(img).enhance(2.8)
-            img = ImageEnhance.Sharpness(img).enhance(2.5)
+            img = ImageEnhance.Contrast(img).enhance(2.0)
+            img = ImageEnhance.Sharpness(img).enhance(1.5)
             return img
         except:
             return img
@@ -1598,59 +1615,93 @@ def merge_results(results: list) -> str:
 # 3.3 QUALITY-BASED RETRY
 # ==========================================
 def assess_quality(response_text: str) -> dict:
-    """Javob sifatini baholash"""
+    """Javob sifatini baholash - YAXSHILANGAN"""
     if not response_text:
         return {"score": 0, "reason": "Bo'sh javob", "retry": True}
     
     text = response_text.lower()
     
-    # Noaniqlik belgilari
-    unclear_count = text.count("[?]") + text.count("unclear") + text.count("noaniq")
-    
-    # Javob uzunligi
-    word_count = len(response_text.split())
-    
     # Skor hisoblash
     score = 100
     reasons = []
     
-    if unclear_count > 10:
-        score -= 30
-        reasons.append(f"{unclear_count} noaniq belgi")
-    elif unclear_count > 5:
-        score -= 15
-        reasons.append(f"{unclear_count} noaniq belgi")
+    # 1. Noaniqlik belgilari tekshirish
+    unclear_count = text.count("[?]") + text.count("unclear") + text.count("noaniq") + text.count("[...]")
     
-    if word_count < 20:
-        score -= 25
-        reasons.append("Juda qisqa javob")
-    
-    if "error" in text or "xato" in text:
+    if unclear_count > 15:
+        score -= 35
+        reasons.append(f"{unclear_count} noaniq belgi (juda ko'p)")
+    elif unclear_count > 8:
         score -= 20
-        reasons.append("Xato xabari bor")
+        reasons.append(f"{unclear_count} noaniq belgi")
+    elif unclear_count > 3:
+        score -= 10
+        reasons.append(f"{unclear_count} noaniq belgi")
+    
+    # 2. Javob uzunligi tekshirish
+    word_count = len(response_text.split())
+    
+    if word_count < 50:
+        score -= 30
+        reasons.append("Juda qisqa javob")
+    elif word_count < 100:
+        score -= 15
+        reasons.append("Qisqa javob")
+    
+    # 3. MUHIM: Bo'limlar mavjudligini tekshirish
+    required_sections = [
+        ("transliteratsiya", "Transliteratsiya yo'q"),
+        ("tarjima", "Tarjima yo'q"),
+        ("leksik", "Leksik tahlil yo'q"),
+    ]
+    
+    for keyword, error_msg in required_sections:
+        if keyword not in text:
+            score -= 15
+            reasons.append(error_msg)
+    
+    # 4. Jadval formati tekshirish (leksik tahlil uchun)
+    if "|" not in response_text:
+        score -= 10
+        reasons.append("Jadval formati yo'q")
+    
+    # 5. Xato xabarlari tekshirish
+    error_keywords = ["error", "xato", "imkonsiz", "o'qib bo'lmaydi", "ko'rinmaydi"]
+    for kw in error_keywords:
+        if kw in text:
+            score -= 10
+            reasons.append(f"Xato belgisi: '{kw}'")
+            break
+    
+    # 6. Aniqlik bahosi mavjudligini tekshirish
+    if "%" not in response_text:
+        score -= 5
+        reasons.append("Aniqlik foizi yo'q")
     
     return {
-        "score": max(0, score),
-        "reason": ", ".join(reasons) if reasons else "Yaxshi",
+        "score": max(0, min(100, score)),
+        "reason": ", ".join(reasons) if reasons else "Yaxshi sifat",
         "retry": score < 50
     }
 
 def analyze_with_retry(model, prompt: str, img: Image.Image, max_retries: int = 2) -> tuple:
-    """Sifat asosida qayta urinish bilan tahlil"""
+    """Sifat asosida qayta urinish bilan tahlil - YAXSHILANGAN"""
     best_result = None
     best_score = 0
     
     for attempt in range(max_retries + 1):
         try:
-            # Har urinishda rasm sifatini oshiramiz
+            # Har urinishda rasm sifatini turlicha tayyorlaymiz
             if attempt == 0:
+                # 1-urinish: standart preprocessing
                 processed_img = enhance_image_for_ai(img)
             elif attempt == 1:
-                # Yuqoriroq kontrast
+                # 2-urinish: yuqoriroq kontrast + keskinlik
                 processed_img = enhance_image_for_ai(img)
-                processed_img = ImageEnhance.Contrast(processed_img).enhance(1.3)
+                processed_img = ImageEnhance.Contrast(processed_img).enhance(1.4)
+                processed_img = ImageEnhance.Sharpness(processed_img).enhance(1.3)
             else:
-                # Binarization
+                # 3-urinish: binarization (qora-oq)
                 processed_img = enhance_image_for_ai(img)
                 processed_img = adaptive_binarize(processed_img)
             
@@ -1665,23 +1716,26 @@ def analyze_with_retry(model, prompt: str, img: Image.Image, max_retries: int = 
                     best_result = result_text
                     best_score = quality["score"]
                 
-                # Yetarlicha yaxshi - to'xtash
-                if quality["score"] >= 70:
+                # Yetarlicha yaxshi - to'xtash (75% va undan yuqori)
+                if quality["score"] >= 75:
                     return (result_text, quality, attempt + 1)
                 
                 # Retry kerak emas yoki oxirgi urinish
                 if not quality["retry"] or attempt == max_retries:
-                    return (best_result, quality, attempt + 1)
+                    return (best_result, {"score": best_score, "reason": quality["reason"], "retry": False}, attempt + 1)
             
         except Exception as e:
             if attempt == max_retries:
-                return (None, {"score": 0, "reason": str(e), "retry": False}, attempt + 1)
+                return (None, {"score": 0, "reason": str(e)[:100], "retry": False}, attempt + 1)
     
     return (best_result, {"score": best_score, "reason": "Max retry reached", "retry": False}, max_retries + 1)
 
 def img_to_png_payload(img: Image.Image):
+    """Rasmni yuqori sifatli PNG formatga o'tkazish"""
     buffered = io.BytesIO()
-    img.save(buffered, format="PNG")
+    # Optimize=True - fayl hajmini kamaytiradi, sifatni saqlab qoladi
+    # compress_level=6 - muvozanat (0=tez, 9=kichik hajm)
+    img.save(buffered, format="PNG", optimize=True, compress_level=6)
     return {"mime_type": "image/png", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
 def fetch_live_credits(email: str):
@@ -1932,58 +1986,80 @@ if file:
     if st.button("✨ TAHLILNI BOSHLASH"):
         if current_credits >= len(indices):
             prompt = f"""Sen qadimiy qo'lyozmalar bo'yicha EKSPERT PALEOGRAF va FILOLOG sifatida ish ko'r.
-Bu {era} davriga oid qo'lyozma rasmini PROFESSIONAL tahlil qil.
+
+═══════════════════════════════════════════
+📥 KIRISH MA'LUMOTLARI:
+═══════════════════════════════════════════
+- Foydalanuvchi ko'rsatgan til: {lang} (faqat yo'naltiruvchi, haqiqiy tilni RASMDAN aniqla)
+- Foydalanuvchi ko'rsatgan xat turi: {era} (faqat yo'naltiruvchi, haqiqiy xatni RASMDAN aniqla)
 
 ═══════════════════════════════════════════
 📋 TAHLIL STRUKTURASI (Barcha bo'limlar MAJBURIY):
 ═══════════════════════════════════════════
 
-## 1. 🔍 MANBA IDENTIFIKATSIYASI
-- **Til**: [Rasmga qarab haqiqiy tilni aniqla: Chig'atoy/Forscha/Arabcha/Eski Turkiy/Aralash]
-- **Yozuv turi**: [Nasta'liq/Naskh/Sulsi/Shikasta/boshqa]
-- **Taxminiy davr**: [Asrni aniqla]
-- **Ishonch darajasi**: [Yuqori/O'rta/Past - sababi bilan]
+## 1. MANBA IDENTIFIKATSIYASI
+- **Til**: [RASMGA QARAB aniqla: Chig'atoy / Forscha / Arabcha / Eski Turkiy / Aralash]
+- **Xat turi**: [RASMGA QARAB aniqla: Nasta'liq / Naskh / Suls / Shikasta / Riq'a / Kufiy / Boshqa]
+- **Taxminiy davr**: [Asrni aniqla, masalan: XV-XVI asr]
+- **Sifat bahosi**: [Yaxshi o'qiladi / Qisman o'qiladi / Qiyin o'qiladi]
 
-## 2. 📜 TRANSLITERATSIYA (Asl yozuv)
-[Matnni asl yozuvda, harf-harf, qator-qator yoz]
-- Noaniq harflarni [?] bilan belgilab, sabab yoz
-- Yo'qolgan qismlarni [...] bilan ko'rsat
-- Maxsus belgilarni (harakat, nuqta) aniq ko'rsat
+## 2. TRANSLITERATSIYA (Asl Arab yozuvi)
+[Matnni ARAB ALIFBOSIDA, qator-qator yoz]
 
-## 3. 🔤 LOTIN TRANSKRIPSIYASI
-[Asl matnni lotin alifbosida yoz - ilmiy transliteratsiya standartida]
+Qoidalar:
+- Har bir qatorni alohida yoz
+- Noaniq harflarni [?] bilan belgilab, sabab yoz: masalan ن[?] - nuqta ko'rinmaydi
+- Yo'qolgan/o'chirilgan qismlarni [...] bilan ko'rsat
+- Harakat belgilarini (zabar, zer, pesh) iloji boricha ko'rsat
 
-## 4. 📖 TO'LIQ TARJIMA (Zamonaviy o'zbek tilida)
-[Butun matnni yaxlit, oqilona, tabiiy o'zbek tiliga tarjima qil]
-- Tarjima mazmunni to'liq aks ettirsin
-- Adabiy va tushunarli til ishlatilsin
+## 3. LOTIN TRANSKRIPSIYASI
+[Asl matnni LOTIN alifbosida yoz]
 
-## 5. 📚 LEKSIK-SEMANTIK TAHLIL
-| So'z | Asl shakl | Ma'nosi | Hozirgi o'zbek tili ekvivalenti |
-|------|-----------|---------|--------------------------------|
-[Qadimiy/kam ishlatiladigan so'zlarni jadvalda ko'rsat]
+Standart: O'zbek lotin alifbosi (a, b, d, e, f, g, gʻ, h, i, j, k, l, m, n, o, p, q, r, s, sh, t, u, v, x, y, z, oʻ, ch, ng)
+Qo'shimcha: ā (uzun a), ī (uzun i), ū (uzun u), ʼ (hamza), ʻ (ayn)
 
-## 6. 🎓 AKADEMIK IZOHLAR
-- **Paleografik xususiyatlar**: [Yozuv uslubi haqida]
-- **Tarixiy kontekst**: [Davr xususiyatlari]
-- **Til xususiyatlari**: [Grammatik, leksik o'ziga xosliklar]
-- **Mazmun tahlili**: [Qisqacha mazmun va ahamiyati]
+## 4. TO'LIQ TARJIMA (Zamonaviy o'zbek tilida)
+[Butun matnni ZAMONAVIY O'ZBEK TILIGA tarjima qil]
 
-## 7. ⚠️ ANIQLIK BAHOSI
-- **Umumiy ishonch**: [0-100%]
-- **Transliteratsiya aniqligi**: [0-100%]
-- **Tarjima aniqligi**: [0-100%]
-- **Qiyinchiliklar**: [Agar bo'lsa, aniq ko'rsat]
+Qoidalar:
+- Tarjima mazmunni TO'LIQ aks ettirsin
+- Adabiy, tushunarli til ishlatilsin
+- Qadimiy iboralarni zamonaviy ekvivalentga o'tkaz
+- Noaniq joylarni [taxminan: ...] bilan belgilab tarjima qil
+
+## 5. LEKSIK-SEMANTIK TAHLIL
+[Qadimiy, kam ishlatiladigan so'zlarni jadvalda ko'rsat]
+
+| № | Asl so'z (Arab) | Lotin | Ma'nosi | Zamonaviy ekvivalent |
+|---|-----------------|-------|---------|---------------------|
+| 1 | فلان | falon | misol | hozirgi so'z |
+| 2 | ... | ... | ... | ... |
+
+Kamida 5-10 ta so'z ko'rsat.
+
+## 6. AKADEMIK IZOHLAR
+- **Paleografik xususiyatlar**: [Xat uslubi, qalam turi, siyoh rangi]
+- **Tarixiy kontekst**: [Qaysi davr, qaysi mintaqa xususiyatlari]
+- **Til xususiyatlari**: [Arxaik so'zlar, grammatik shakllar]
+- **Mazmun tahlili**: [Matn mavzusi, janri, ahamiyati]
+
+## 7. ANIQLIK BAHOSI
+| Mezon | Foiz | Izoh |
+|-------|------|------|
+| Transliteratsiya aniqligi | X% | sabab |
+| Tarjima aniqligi | X% | sabab |
+| Umumiy ishonch | X% | sabab |
+
+Asosiy qiyinchiliklar: [Agar bo'lsa, ro'yxat qil]
 
 ═══════════════════════════════════════════
-📌 QOIDALAR:
+📌 MUHIM QOIDALAR:
 ═══════════════════════════════════════════
-- Foydalanuvchi ko'rsatgan til ({lang}) faqat YO'NALTIRUVCHI, haqiqiy tilni RASMDAN aniqla
-- Barcha javoblar O'ZBEK TILIDA bo'lsin
-- Har bir bo'lim MAJBURIY - bo'sh qoldirma
-- Ilmiy aniqlik va haqqoniylik - eng muhim
-- Noaniqliklarni YASHIRMA, aniq ko'rsat
-- Bu oddiy tarjima EMAS, AKADEMIK EKSPERTIZA"""
+1. Barcha javoblar O'ZBEK TILIDA bo'lsin
+2. Har bir bo'lim MAJBURIY - bo'sh qoldirma
+3. Noaniqliklarni YASHIRMA, aniq [?] bilan belgilab ko'rsat
+4. Bu oddiy tarjima EMAS, ILMIY EKSPERTIZA
+5. Agar matn BUTUNLAY o'qib bo'lmasa, shuni aniq ayt"""
             
             # === PROGRESS TRACKER ===
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
@@ -2188,17 +2264,29 @@ Bu {era} davriga oid qo'lyozma rasmini PROFESSIONAL tahlil qil.
                 if st.button(f"📤 So'rash", key=f"btn_{idx}"):
                     if q:
                         with st.spinner("🤖 AI javob tayyorlayapti..."):
-                            chat_prompt = f"""Qo'lyozma hujjati haqida savol berildi.
+                            chat_prompt = f"""Sen qadimiy qo'lyozmalar bo'yicha EKSPERT sifatida javob ber.
 
-HUJJAT MAZMUNI:
+═══════════════════════════════════════════
+KONTEKST:
+═══════════════════════════════════════════
+Bu qo'lyozma hujjati haqida oldingi tahlil qilingan:
+
 {st.session_state.results[idx]}
 
-SAVOL: {q}
+═══════════════════════════════════════════
+FOYDALANUVCHI SAVOLI:
+═══════════════════════════════════════════
+{q}
 
-QOIDALAR:
-- Javobni O'ZBEK TILIDA ber
-- Qisqa va aniq javob ber
-- Agar javob hujjatda bo'lmasa, shuni ayt"""
+═══════════════════════════════════════════
+JAVOB QOIDALARI:
+═══════════════════════════════════════════
+1. Javobni O'ZBEK TILIDA ber
+2. Aniq va to'liq javob ber (1-3 paragraf)
+3. Agar javob tahlilda bo'lsa - aniq ko'rsat va iqtibos keltir
+4. Agar javob tahlilda YO'Q bo'lsa - RASMNI qayta ko'rib javob ber
+5. Agar umuman javob berib bo'lmasa - sababini aniq tushuntir
+6. Taxminiy javob bo'lsa - [TAXMIN] deb belgilab ber"""
                             chat_res = model.generate_content([
                                 chat_prompt,
                                 img_to_png_payload(processed[idx])
