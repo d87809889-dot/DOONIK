@@ -1604,74 +1604,194 @@ def merge_results(results: list) -> str:
 # 3.3 QUALITY-BASED RETRY
 # ==========================================
 def assess_quality(response_text: str) -> dict:
-    """Javob sifatini baholash - YAXSHILANGAN"""
+    """Javob sifatini baholash - KENGAYTIRILGAN VERSIYA"""
     if not response_text:
-        return {"score": 0, "reason": "Bo'sh javob", "retry": True}
+        return {"score": 0, "reason": "Bo'sh javob", "retry": True, "details": {}}
     
     text = response_text.lower()
     
     # Skor hisoblash
     score = 100
     reasons = []
+    details = {}
     
-    # 1. Noaniqlik belgilari tekshirish
+    # 1. Noaniqlik belgilari tekshirish (ANIQROQ CHEGARALAR)
     unclear_count = text.count("[?]") + text.count("unclear") + text.count("noaniq") + text.count("[...]")
+    details['unclear_marks'] = unclear_count
     
-    if unclear_count > 15:
-        score -= 35
-        reasons.append(f"{unclear_count} noaniq belgi (juda ko'p)")
-    elif unclear_count > 8:
-        score -= 20
-        reasons.append(f"{unclear_count} noaniq belgi")
-    elif unclear_count > 3:
-        score -= 10
-        reasons.append(f"{unclear_count} noaniq belgi")
+    if unclear_count > 20:
+        score -= 40
+        reasons.append(f"{unclear_count} noaniq belgi (juda ko'p - rasmni yaxshilang)")
+    elif unclear_count > 12:
+        score -= 25
+        reasons.append(f"{unclear_count} noaniq belgi (ko'p)")
+    elif unclear_count > 6:
+        score -= 12
+        reasons.append(f"{unclear_count} noaniq belgi (o'rtacha)")
+    elif unclear_count > 0:
+        score -= 3
+        reasons.append(f"{unclear_count} noaniq belgi (oz)")
     
-    # 2. Javob uzunligi tekshirish
+    # 2. Javob uzunligi tekshirish (ANIQROQ)
     word_count = len(response_text.split())
+    details['word_count'] = word_count
     
-    if word_count < 50:
-        score -= 30
-        reasons.append("Juda qisqa javob")
-    elif word_count < 100:
-        score -= 15
-        reasons.append("Qisqa javob")
+    if word_count < 30:
+        score -= 40
+        reasons.append("Juda qisqa javob (kam ma'lumot)")
+    elif word_count < 80:
+        score -= 20
+        reasons.append("Qisqa javob (to'liqroq bo'lishi kerak)")
+    elif word_count < 150:
+        score -= 5
+        reasons.append("Qisqaroq javob")
+    else:
+        score += 5  # Bonus batafsil javob uchun
     
-    # 3. MUHIM: Bo'limlar mavjudligini tekshirish
+    # 3. MAJBURIY bo'limlar tekshirish
     required_sections = [
-        ("transliteratsiya", "Transliteratsiya yo'q"),
-        ("tarjima", "Tarjima yo'q"),
-        ("leksik", "Leksik tahlil yo'q"),
+        ("transliteratsiya", "Transliteratsiya bo'limi yo'q", 20),
+        ("tarjima", "Tarjima bo'limi yo'q", 20),
+        ("leksik", "Leksik tahlil yo'q", 15),
+        ("identifikatsiya", "Manba identifikatsiyasi yo'q", 10),
+        ("izoh", "Izohlar bo'limi yo'q", 10),
     ]
     
-    for keyword, error_msg in required_sections:
+    missing_sections = []
+    for keyword, error_msg, penalty in required_sections:
         if keyword not in text:
-            score -= 15
+            score -= penalty
             reasons.append(error_msg)
+            missing_sections.append(keyword)
+    details['missing_sections'] = missing_sections
     
-    # 4. Jadval formati tekshirish (leksik tahlil uchun)
-    if "|" not in response_text:
-        score -= 10
-        reasons.append("Jadval formati yo'q")
+    # 4. Jadval formati tekshirish (ANIQROQ)
+    table_rows = response_text.count("|")
+    details['table_rows'] = table_rows
+    
+    if table_rows < 3:
+        score -= 15
+        reasons.append("Jadval yo'q yoki to'liq emas")
+    elif table_rows < 8:
+        score -= 5
+        reasons.append("Jadval qisqa (kamida 5-10 qator bo'lishi kerak)")
     
     # 5. Xato xabarlari tekshirish
-    error_keywords = ["error", "xato", "imkonsiz", "o'qib bo'lmaydi", "ko'rinmaydi"]
+    error_keywords = ["error", "xato", "imkonsiz", "o'qib bo'lmaydi", "ko'rinmaydi", "butunlay", "yo'q"]
+    found_errors = []
     for kw in error_keywords:
-        if kw in text:
-            score -= 10
-            reasons.append(f"Xato belgisi: '{kw}'")
-            break
+        if kw in text and text.count(kw) > 2:  # 2 martadan ko'p
+            found_errors.append(kw)
     
-    # 6. Aniqlik bahosi mavjudligini tekshirish
-    if "%" not in response_text:
+    if found_errors:
+        score -= 15
+        reasons.append(f"Ko'p xato belgilari: {', '.join(found_errors[:3])}")
+    details['error_keywords'] = found_errors
+    
+    # 6. Aniqlik bahosi tekshirish (YANGI: sonlarni tekshirish)
+    percent_count = response_text.count("%")
+    details['percent_marks'] = percent_count
+    
+    if percent_count == 0:
+        score -= 10
+        reasons.append("Aniqlik foizlari yo'q")
+    elif percent_count < 3:
         score -= 5
-        reasons.append("Aniqlik foizi yo'q")
+        reasons.append("Kamida 3 ta aniqlik foizi bo'lishi kerak")
+    
+    # 7. YANGI: Bo'lim sarlavhalari mavjudligi
+    section_headers = response_text.count("##")
+    details['section_headers'] = section_headers
+    
+    if section_headers < 5:
+        score -= 10
+        reasons.append(f"Faqat {section_headers} ta bo'lim sarlavhasi (kamida 5-7 ta kerak)")
+    
+    # 8. YANGI: Javob strukturasini tekshirish
+    has_good_structure = ("##" in response_text and 
+                         response_text.count("\n\n") > 5 and
+                         len(response_text.split("\n")) > 20)
+    if not has_good_structure:
+        score -= 8
+        reasons.append("Yomon formatlangan javob")
+    details['has_structure'] = has_good_structure
+    
+    # Final skorni hisoblash
+    final_score = max(0, min(100, score))
+    
+    # Sifat darajasini aniqlash
+    if final_score >= 85:
+        quality_level = "A'lo"
+    elif final_score >= 70:
+        quality_level = "Yaxshi"
+    elif final_score >= 55:
+        quality_level = "Qoniqarli"
+    else:
+        quality_level = "Past"
     
     return {
-        "score": max(0, min(100, score)),
-        "reason": ", ".join(reasons) if reasons else "Yaxshi sifat",
-        "retry": score < 50
+        "score": final_score,
+        "level": quality_level,
+        "reason": ", ".join(reasons) if reasons else "Mukammal sifat",
+        "retry": final_score < 55,  # 55 dan past bo'lsa qayta urinish
+        "details": details
     }
+
+def generate_quality_report(quality: dict, theme: dict) -> str:
+    """Sifat hisobotini HTML formatida yaratish"""
+    score = quality['score']
+    level = quality.get('level', 'Noma\'lum')
+    details = quality.get('details', {})
+    
+    # Rang va emoji tanlash
+    if score >= 85:
+        emoji = "🏆"
+        color = "#10b981"
+        bg_color = "rgba(16, 185, 129, 0.1)"
+    elif score >= 70:
+        emoji = "✅"
+        color = "#3b82f6"
+        bg_color = "rgba(59, 130, 246, 0.1)"
+    elif score >= 55:
+        emoji = "⚠️"
+        color = "#f59e0b"
+        bg_color = "rgba(245, 158, 11, 0.1)"
+    else:
+        emoji = "❌"
+        color = "#ef4444"
+        bg_color = "rgba(239, 68, 68, 0.1)"
+    
+    # Batafsil metrikalar
+    metrics_html = ""
+    if details:
+        metrics_html = "<div style='margin-top:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:8px;'>"
+        metrics_html += "<p style='font-size:12px; color:rgba(255,255,255,0.7); margin:4px 0;'><b>📊 Metrikalar:</b></p>"
+        
+        if 'word_count' in details:
+            metrics_html += f"<p style='font-size:11px; margin:2px 0;'>• So'zlar soni: {details['word_count']}</p>"
+        if 'unclear_marks' in details:
+            metrics_html += f"<p style='font-size:11px; margin:2px 0;'>• Noaniq belgilar: {details['unclear_marks']}</p>"
+        if 'table_rows' in details:
+            metrics_html += f"<p style='font-size:11px; margin:2px 0;'>• Jadval qatorlari: {details['table_rows']}</p>"
+        if 'section_headers' in details:
+            metrics_html += f"<p style='font-size:11px; margin:2px 0;'>• Bo'limlar soni: {details['section_headers']}</p>"
+        if 'missing_sections' in details and details['missing_sections']:
+            metrics_html += f"<p style='font-size:11px; margin:2px 0; color:#ef4444;'>• Yo'q bo'limlar: {', '.join(details['missing_sections'][:3])}</p>"
+        
+        metrics_html += "</div>"
+    
+    return f"""
+<div style='background:{bg_color}; padding:16px; border-radius:12px; 
+            border-left:4px solid {color}; margin:10px 0; backdrop-filter:blur(10px);'>
+    <div style='display:flex; justify-content:space-between; align-items:center;'>
+        <h4 style='margin:0; color:{color}; font-size:18px;'>{emoji} {level} Sifat</h4>
+        <span style='background:{color}; color:white; padding:6px 12px; border-radius:20px; 
+                     font-weight:700; font-size:16px;'>{score}%</span>
+    </div>
+    <p style='margin:8px 0 0 0; font-size:14px; color:rgba(255,255,255,0.8);'>{quality['reason']}</p>
+    {metrics_html}
+</div>
+"""
 
 def analyze_with_retry(model, prompt: str, img: Image.Image, max_retries: int = 2) -> tuple:
     """Sifat asosida qayta urinish bilan tahlil - DUAL-PASS versiya"""
@@ -2084,7 +2204,7 @@ if file:
     
     if st.button("✨ TAHLILNI BOSHLASH"):
         if current_credits >= len(indices):
-            prompt = f"""Sen qadimiy qo'lyozmalar bo'yicha EKSPERT PALEOGRAF va FILOLOG sifatida ish ko'r.
+            prompt = f"""Sen qadimiy qo'lyozmalar bo'yicha DUNYO DARAJASIDAGI EKSPERT PALEOGRAF va FILOLOG sifatida ish ko'r.
 
 ═══════════════════════════════════════════
 📥 KIRISH MA'LUMOTLARI:
@@ -2092,73 +2212,92 @@ if file:
 - Foydalanuvchi ko'rsatgan til: {lang} (faqat yo'naltiruvchi, haqiqiy tilni RASMDAN aniqla)
 - Foydalanuvchi ko'rsatgan xat turi: {era} (faqat yo'naltiruvchi, haqiqiy xatni RASMDAN aniqla)
 
+⚠️ ASOSIY VAZIFA: Rasmni DIQQAT BILAN o'rgan va MAKSIMAL ANIQLIK bilan tahlil qil.
+
 ═══════════════════════════════════════════
-📋 TAHLIL STRUKTURASI (Barcha bo'limlar MAJBURIY):
+📋 MAJBURIY TAHLIL STRUKTURASI (7 BO'LIM):
 ═══════════════════════════════════════════
 
 ## 1. MANBA IDENTIFIKATSIYASI
-- **Til**: [RASMGA QARAB aniqla: Chig'atoy / Forscha / Arabcha / Eski Turkiy / Aralash]
-- **Xat turi**: [RASMGA QARAB aniqla: Nasta'liq / Naskh / Suls / Shikasta / Riq'a / Kufiy / Boshqa]
-- **Taxminiy davr**: [Asrni aniqla, masalan: XV-XVI asr]
-- **Sifat bahosi**: [Yaxshi o'qiladi / Qisman o'qiladi / Qiyin o'qiladi]
+- **Til**: [RASMNI o'rganib ANIQ aniqlang: Chig'atoy / Forscha / Arabcha / Eski Turkiy / Aralash]
+- **Xat turi**: [Xat uslubini ANIQ aniqlang: Nasta'liq / Naskh / Suls / Shikasta / Riq'a / Kufiy / Boshqa]
+- **Taxminiy davr**: [Asrni aniqlang va ASOSLANG, masalan: "XV-XVI asr, chunki..."]
+- **O'qilish darajasi**: [Rasmiy baho: Yaxshi o'qiladi (80-100%) / Qisman o'qiladi (50-79%) / Qiyin o'qiladi (0-49%)]
+- **Qog'oz holati**: [Yaxshi saqlangan / Qisman shikastlangan / Jiddiy zarar ko'rgan]
 
-## 2. TRANSLITERATSIYA (Asl Arab yozuvi)
-[Matnni ARAB ALIFBOSIDA, qator-qator yoz]
+## 2. TRANSLITERATSIYA (Asl Arab-Fors yozuvi)
+[Matnni ARAB/FORS ALIFBOSIDA, qator-qator ANIQ yoz]
 
-Qoidalar:
-- Har bir qatorni alohida yoz
-- Noaniq harflarni [?] bilan belgilab, sabab yoz: masalan ن[?] - nuqta ko'rinmaydi
-- Yo'qolgan/o'chirilgan qismlarni [...] bilan ko'rsat
-- Harakat belgilarini (zabar, zer, pesh) iloji boricha ko'rsat
+🔍 QOIDALAR:
+- Har bir qatorni alohida ko'rsating
+- Noaniq harflar uchun: ن[?-nuqta ko'rinmaydi] yoki ک[?-shikastlangan]
+- Yo'qolgan/o'chirilgan: [...5-6 so'z yo'qolgan] yoki [1 satr o'chirilgan]
+- Harakat belgilarini (zabar, zer, pesh) ALBATTA ko'rsating
+- Kamida 3-5 qator bo'lishi SHART
 
 ## 3. LOTIN TRANSKRIPSIYASI
-[Asl matnni LOTIN alifbosida yoz]
+[Yuqoridagi Arab matnini LOTIN alifbosida ANIQ yoz]
 
-Standart: O'zbek lotin alifbosi (a, b, d, e, f, g, gʻ, h, i, j, k, l, m, n, o, p, q, r, s, sh, t, u, v, x, y, z, oʻ, ch, ng)
-Qo'shimcha: ā (uzun a), ī (uzun i), ū (uzun u), ʼ (hamza), ʻ (ayn)
+📝 STANDART: O'zbek lotin alifbosi
+- Asosiy: a, b, d, e, f, g, gʻ, h, i, j, k, l, m, n, o, p, q, r, s, sh, t, u, v, x, y, z, oʻ, ch, ng
+- Qo'shimcha: ā (uzun a), ī (uzun i), ū (uzun u), ʼ (hamza), ʻ (ayn)
+- HAR BIR SO'ZNI transliteratsiya qiling
 
 ## 4. TO'LIQ TARJIMA (Zamonaviy o'zbek tilida)
-[Butun matnni ZAMONAVIY O'ZBEK TILIGA tarjima qil]
+[Butun matnni ZAMONAVIY O'ZBEK TILIGA to'liq tarjima qiling]
 
-Qoidalar:
-- Tarjima mazmunni TO'LIQ aks ettirsin
-- Adabiy, tushunarli til ishlatilsin
-- Qadimiy iboralarni zamonaviy ekvivalentga o'tkaz
-- Noaniq joylarni [taxminan: ...] bilan belgilab tarjima qil
+📖 QOIDALAR:
+- Tarjima MAZMUNNI TO'LIQ aks ettirishi SHART
+- Adabiy, tushunarli, ravon til
+- Qadimiy iboralarni zamonaviy shaklga o'tkaz
+- Noaniq joylar: [taxminan: men shunday o'qidim] shaklida
+- Kamida 3-5 gap bo'lishi SHART
 
 ## 5. LEKSIK-SEMANTIK TAHLIL
-[Qadimiy, kam ishlatiladigan so'zlarni jadvalda ko'rsat]
+[Qadimiy, kam uchraydigan, muhim so'zlarni JADVALDA ko'rsat]
 
-| № | Asl so'z (Arab) | Lotin | Ma'nosi | Zamonaviy ekvivalent |
-|---|-----------------|-------|---------|---------------------|
-| 1 | فلان | falon | misol | hozirgi so'z |
-| 2 | ... | ... | ... | ... |
+| № | Asl so'z (Arab) | Lotin | Ma'nosi | Zamonaviy ekvivalent | Izoh |
+|---|-----------------|-------|---------|---------------------|------|
+| 1 | مثال | misal | namuna | misol | umumiy so'z |
+| 2 | ... | ... | ... | ... | ... |
 
-Kamida 5-10 ta so'z ko'rsat.
+⚠️ KAMIDA 5 TA, IDEAL 8-10 TA SO'Z ko'rsating.
 
 ## 6. AKADEMIK IZOHLAR
-- **Paleografik xususiyatlar**: [Xat uslubi, qalam turi, siyoh rangi]
-- **Tarixiy kontekst**: [Qaysi davr, qaysi mintaqa xususiyatlari]
-- **Til xususiyatlari**: [Arxaik so'zlar, grammatik shakllar]
-- **Mazmun tahlili**: [Matn mavzusi, janri, ahamiyati]
+- **Paleografik xususiyatlar**: [Xat uslubi tavsifi, qalam kengligi, siyoh turi/rangi, yozuv yo'nalishi]
+- **Tarixiy kontekst**: [Qaysi davr, qaysi hudud/shahar, siyosiy vaziyat, madaniy muhit]
+- **Til xususiyatlari**: [Arxaik so'zlar, grammatik shakllar, morfologiya, sintaksis]
+- **Mazmun tahlili**: [Matn mavzusi, janri (xat/hujjat/she'r/ilmiy), ahamiyati, muallif uslubi]
+- **Qiyinchiliklar**: [Aniq nima qiyin bo'ldi: siyoh o'chgan, qog'oz yirtilgan, xat noaniq...]
 
-## 7. ANIQLIK BAHOSI
-| Mezon | Foiz | Izoh |
-|-------|------|------|
-| Transliteratsiya aniqligi | X% | sabab |
-| Tarjima aniqligi | X% | sabab |
-| Umumiy ishonch | X% | sabab |
+## 7. ANIQLIK BAHOSI (ANIQ FOIZLAR)
+| Mezon | Foiz | Batafsil Izoh |
+|-------|------|---------------|
+| Transliteratsiya aniqligi | X% | Nechta harf/so'z aniq, nechta [?] |
+| Tarjima aniqligi | X% | Mazmun tushunilish darajasi |
+| Leksik tahlil to'liqligi | X% | So'zlar soni va tahlil chuqurligi |
+| Umumiy ishonch darajasi | X% | Umumiy natijaga ishonch |
 
-Asosiy qiyinchiliklar: [Agar bo'lsa, ro'yxat qil]
+🚨 **Asosiy qiyinchiliklar ro'yxati**:
+1. [Birinchi muammo va uning sababi]
+2. [Ikkinchi muammo]
+3. [Uchinchi muammo]
 
 ═══════════════════════════════════════════
-📌 MUHIM QOIDALAR:
+⚠️ MUHIM QOIDALAR (MAJBURIY BAJARISH):
 ═══════════════════════════════════════════
-1. Barcha javoblar O'ZBEK TILIDA bo'lsin
-2. Har bir bo'lim MAJBURIY - bo'sh qoldirma
-3. Noaniqliklarni YASHIRMA, aniq [?] bilan belgilab ko'rsat
-4. Bu oddiy tarjima EMAS, ILMIY EKSPERTIZA
-5. Agar matn BUTUNLAY o'qib bo'lmasa, shuni aniq ayt"""
+1. ✅ Barcha javoblar O'ZBEK TILIDA
+2. ✅ BARCHA 7 BO'LIM to'ldirilishi MAJBURIY - bo'sh bo'lim QO'YISH MUMKIN EMAS
+3. ✅ Noaniqliklarni [?] bilan belgilab, SABAB yozing
+4. ✅ Bu oddiy tarjima EMAS - bu PROFESSIONAL ILMIY EKSPERTIZA
+5. ✅ Jadvalda KAMIDA 5 TA qator bo'lishi SHART
+6. ✅ Har bir bo'limda KAMIDA 3-5 qator matn bo'lishi kerak
+7. ✅ Aniqlik foizlarini REAL baholang (75-95% oralig'ida bo'lishi kerak)
+8. ❌ "O'qib bo'lmaydi", "Ko'rinmaydi", "Yo'q" kabi umumiy javoblar TAQIQLANGAN
+9. ✅ Agar matn juda qiyin bo'lsa - iloji boricha o'qib, [?] bilan belgilang
+10. ✅ Har bir [?] belgisi uchun SABAB yozing (masalan: [?-siyoh o'chgan])
+
+💡 ESLATMA: Sifatli javob = Ko'proq ma'lumot + Kam [?] belgilar + To'liq jadval + Aniq foizlar"""
             
             # === PROGRESS TRACKER ===
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
@@ -2204,14 +2343,22 @@ Asosiy qiyinchiliklar: [Agar bo'lsa, ro'yxat qil]
                                 use_credit_atomic(st.session_state.u_email)
                                 
                                 # Quality indicator
-                                if quality["score"] >= 80:
-                                    st.toast(f"✅ Varaq {idx+1} tayyor! (Yuqori sifat)", icon="🎉")
-                                elif quality["score"] >= 50:
-                                    st.toast(f"✅ Varaq {idx+1} tayyor! (O'rtacha sifat)", icon="⚠️")
+                                # Sifat bo'yicha xabar berish (YANGI CHEGARALAR)
+                                if quality["score"] >= 85:
+                                    st.toast(f"🏆 Varaq {idx+1} - A'lo sifat!", icon="🎉")
+                                elif quality["score"] >= 70:
+                                    st.toast(f"✅ Varaq {idx+1} - Yaxshi sifat", icon="✅")
+                                elif quality["score"] >= 55:
+                                    st.toast(f"⚠️ Varaq {idx+1} - Qoniqarli sifat", icon="⚠️")
                                     quality_issues.append(f"Varaq {idx+1}: {quality['reason']}")
                                 else:
-                                    st.toast(f"⚠️ Varaq {idx+1} tahlil qilindi, lekin sifat past", icon="⚠️")
+                                    st.toast(f"❌ Varaq {idx+1} - Past sifat", icon="❌")
                                     quality_issues.append(f"Varaq {idx+1}: {quality['reason']}")
+                                
+                                # YANGI: Batafsil sifat hisobotini session_state'ga saqlash
+                                if 'quality_reports' not in st.session_state:
+                                    st.session_state.quality_reports = {}
+                                st.session_state.quality_reports[idx] = quality
                                 
                                 if attempts > 1:
                                     st.info(f"ℹ️ {attempts} urinishda tahlil qilindi")
@@ -2332,6 +2479,11 @@ Asosiy qiyinchiliklar: [Agar bo'lsa, ro'yxat qil]
                 st.markdown("</div>", unsafe_allow_html=True)
 
             with c2:
+                # YANGI: Sifat hisobotini ko'rsatish
+                if hasattr(st.session_state, 'quality_reports') and idx in st.session_state.quality_reports:
+                    quality_report_html = generate_quality_report(st.session_state.quality_reports[idx], theme)
+                    st.markdown(quality_report_html, unsafe_allow_html=True)
+                
                 # Natijani markdown sifatida ko'rsatish
                 st.markdown("<div class='result-box'>", unsafe_allow_html=True)
                 st.markdown(st.session_state.results[idx])
