@@ -1465,36 +1465,27 @@ def optimal_resize(img: Image.Image, target_size: int = 1800) -> Image.Image:
         return img
 
 def enhance_image_for_ai(img: Image.Image) -> Image.Image:
-    """Rasmni AI tahlili uchun optimallashtirish - SIFATLI versiya"""
+    """Rasmni AI tahlili uchun optimallashtirish
+    - RANGLI saqlanadi (siyoh rangi muhim)
+    - Engil kontrast/keskinlik (o'chgan siyoh uchun)
+    - Grayscale QILINMAYDI
+    """
     try:
-        # 1. O'lchamni optimallashtirish (kattaroq = aniqroq)
-        img = optimal_resize(img, target_size=1800)  # 1400→1800: AI ko'proq detal ko'radi
+        # 1. Optimal o'lchamga keltirish
+        img = optimal_resize(img, target_size=1800)
         
-        # 2. Grayscale
-        img = ImageOps.grayscale(img)
+        # 2. EXIF rotatsiyasini to'g'rilash
+        img = ImageOps.exif_transpose(img) or img
         
-        # 3. Auto-contrast - eng samarali birinchi qadam
-        img = ImageOps.autocontrast(img, cutoff=0.5)  # cutoff 1→0.5: kamroq ma'lumot yo'qoladi
+        # 3. Engil kontrast (rangli rasmda ham ishlaydi, o'chgan siyohni aniqlashtiradi)
+        img = ImageEnhance.Contrast(img).enhance(1.2)
         
-        # 4. UnsharpMask - harflar chetlarini JUDA aniq qiladi (OCR uchun eng yaxshi filtr)
-        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
-        
-        # 5. Kontrast oshirish - matn va fon orasini kuchaytirish
-        img = ImageEnhance.Contrast(img).enhance(1.5)  # 1.6→1.5: tabiiyroq
-        
-        # 6. Keskinlik - yakuniy aniqlashtirish
-        img = ImageEnhance.Sharpness(img).enhance(1.3)  # 1.4→1.3: ortiqcha keskinlik shovqin qo'shadi
+        # 4. Engil keskinlik (harflar chegarasini biroz aniqlashtiradi)
+        img = ImageEnhance.Sharpness(img).enhance(1.15)
         
         return img
-    except Exception as e:
-        # Fallback: minimal xavfsiz usul
-        try:
-            img = ImageOps.grayscale(img)
-            img = ImageOps.autocontrast(img, cutoff=1)
-            img = ImageEnhance.Contrast(img).enhance(1.8)
-            return img
-        except:
-            return img
+    except Exception:
+        return img
 
 # ==========================================
 # 3.2 SMART CROPPING - Katta rasmlar uchun
@@ -1800,47 +1791,63 @@ def generate_quality_report(quality: dict, theme: dict) -> str:
 """
 
 def analyze_with_retry(model, prompt: str, img: Image.Image, max_retries: int = 2) -> tuple:
-    """Sifat asosida qayta urinish bilan tahlil - DUAL-PASS versiya"""
+    """1 ta sifatli so'rov + faqat kerak bo'lsa qayta urinish
     
-    # BIRINCHI: Dual-pass tahlil qilish (2 xil usulda)
-    result, quality, passes = dual_pass_analyze(model, prompt, img)
+    OLDIN: har doim 2-3 ta API chaqiruv (dual_pass + retry)
+    ENDI:  1 ta chaqiruv, faqat sifat < 50 bo'lsa 1 marta qayta urinish
+    NATIJA: 2-3x kamroq API sarfi, tezlik 2x oshadi
+    """
     
-    # Agar yaxshi natija bo'lsa - qaytarish
-    if result and quality["score"] >= 70:
-        return (result, quality, passes)
+    # === BIRINCHI SO'ROV: rangli original rasm ===
+    result = None
+    quality = {"score": 0, "reason": "Natija olinmadi", "retry": True}
     
-    # Agar natija yomon bo'lsa - binarization bilan qayta urinish
-    if quality["score"] < 50:
-        try:
-            processed_img = enhance_image_for_ai(img)
-            processed_img = adaptive_binarize(processed_img)
+    try:
+        processed_img = enhance_image_for_ai(img)
+        payload = img_to_png_payload(processed_img)
+        resp = model.generate_content([prompt, payload])
+        
+        if resp.candidates and resp.candidates[0].content.parts:
+            result = resp.text
+            quality = assess_quality(result)
+    except Exception:
+        pass
+    
+    # Agar yaxshi natija bo'lsa — darhol qaytarish (1 ta API chaqiruv)
+    if result and quality["score"] >= 50:
+        result = post_process_result(result)
+        return (result, quality, 1)
+    
+    # === QAYTA URINISH: faqat sifat < 50 bo'lsa (grayscale + kontrast) ===
+    try:
+        retry_img = ImageOps.grayscale(img)
+        retry_img = optimal_resize(retry_img, target_size=1800)
+        retry_img = ImageOps.autocontrast(retry_img, cutoff=1)
+        retry_img = ImageEnhance.Contrast(retry_img).enhance(1.8)
+        
+        payload = img_to_png_payload(retry_img)
+        resp = model.generate_content([prompt, payload])
+        
+        if resp.candidates and resp.candidates[0].content.parts:
+            retry_result = resp.text
+            retry_quality = assess_quality(retry_result)
             
-            payload = img_to_png_payload(processed_img)
-            resp = model.generate_content([prompt, payload])
-            
-            if resp.candidates and resp.candidates[0].content.parts:
-                result_text = resp.text
-                new_quality = assess_quality(result_text)
-                
-                # Agar yangi natija yaxshiroq bo'lsa
-                if new_quality["score"] > quality["score"]:
-                    final_text = post_process_result(result_text)
-                    return (final_text, new_quality, passes + 1)
-        except:
-            pass
+            # Yangi natija yaxshiroq bo'lsa — uni olish
+            if retry_quality["score"] > quality["score"]:
+                return (post_process_result(retry_result), retry_quality, 2)
+    except Exception:
+        pass
     
-    # Post-processing qo'llash va qaytarish
+    # Original natijani qaytarish
     if result:
         result = post_process_result(result)
-    
-    return (result, quality, passes)
+    return (result, quality, 1)
 
 def img_to_png_payload(img: Image.Image):
-    """Rasmni yuqori sifatli PNG formatga o'tkazish - SIFAT USTUNLIGI"""
+    """Rasmni PNG formatda AIga yuborish (lossless - nuqtalar saqlanadi)"""
     buffered = io.BytesIO()
-    # compress_level=3: sifat ustunligi (6 da mayda harflar yo'qolishi mumkin)
-    # PNG lossless format, lekin compress_level rasm ma'lumotiga ta'sir qilmaydi,
-    # faqat fayl hajmi va tezlikka ta'sir qiladi - shuning uchun xavfsiz o'zgarish
+    if img.mode == 'RGBA':
+        img = img.convert('RGB')
     img.save(buffered, format="PNG", optimize=False, compress_level=3)
     return {"mime_type": "image/png", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
@@ -2251,22 +2258,32 @@ if file:
 - **Qog'oz holati**: [Yaxshi saqlangan / Qisman shikastlangan / Jiddiy zarar ko'rgan]
 
 ## 2. TRANSLITERATSIYA (Asl Arab-Fors yozuvi)
-[Matnni ARAB/FORS ALIFBOSIDA, qator-qator ANIQ yoz]
+Rasmdagi HAR BIR qatorni RAQAM bilan belgilab, ARAB/FORS ALIFBOSIDA yoz:
+
+[1] بسم الله الرحمن الرحيم
+[2] الحمد لله رب العالمين
+[3] ...
 
 🔍 QOIDALAR:
-- Har bir qatorni alohida ko'rsating
+- MAJBURIY: Har bir qatorni [1], [2], [3]... raqam bilan BELGILAB yoz
+- Rasmdagi FIZIK qator tartibini AYNAN saqlang — aralashtirib YOZISH TAQIQLANGAN
 - Noaniq harflar uchun: ن[?-nuqta ko'rinmaydi] yoki ک[?-shikastlangan]
 - Yo'qolgan/o'chirilgan: [...5-6 so'z yo'qolgan] yoki [1 satr o'chirilgan]
 - Harakat belgilarini (zabar, zer, pesh) ALBATTA ko'rsating
 - Kamida 3-5 qator bo'lishi SHART
 
 ## 3. LOTIN TRANSKRIPSIYASI
-[Yuqoridagi Arab matnini LOTIN alifbosida ANIQ yoz]
+Yuqoridagi AYNI raqamlar bilan lotin alifbosida yoz (raqamlar MOS kelishi SHART):
+
+[1] Bismillahir rohmanir rohiym
+[2] Alhamdulillahi robbil 'alamin
+[3] ...
 
 📝 STANDART: O'zbek lotin alifbosi
 - Asosiy: a, b, d, e, f, g, gʻ, h, i, j, k, l, m, n, o, p, q, r, s, sh, t, u, v, x, y, z, oʻ, ch, ng
 - Qo'shimcha: ā (uzun a), ī (uzun i), ū (uzun u), ʼ (hamza), ʻ (ayn)
 - HAR BIR SO'ZNI transliteratsiya qiling
+- QATOR RAQAMI transliteratsiya bilan AYNAN MOS kelishi SHART
 
 ## 4. TO'LIQ TARJIMA (Zamonaviy o'zbek tilida)
 [Butun matnni ZAMONAVIY O'ZBEK TILIGA to'liq tarjima qiling]
