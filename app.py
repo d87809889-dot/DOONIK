@@ -45,6 +45,12 @@ if "current_page_index" not in st.session_state:
     st.session_state.current_page_index = 0
 if "show_landing" not in st.session_state:
     st.session_state.show_landing = False
+if "file_data" not in st.session_state:
+    st.session_state.file_data = None
+if "is_pdf" not in st.session_state:
+    st.session_state.is_pdf = False
+if "total_pages" not in st.session_state:
+    st.session_state.total_pages = 0
 
 # ==========================================
 # THEME DEFINITIONS
@@ -1385,12 +1391,12 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
 }
 
-# Generation config - aniqlik uchun nol temperature
+# Generation config - aniqlik uchun optimallashtirilgan
 generation_config = genai.GenerationConfig(
-    temperature=0.0,  # 0 = eng deterministik, har safar bir xil natija
+    temperature=0.1,  # 0.1 = deterministik lekin qotib qolmaydi, nozik tafovutlarni sezadi
     top_p=0.95,
     top_k=40,
-    max_output_tokens=4096,
+    max_output_tokens=8192,  # 4096→8192: barcha 7 bo'lim to'liq chiqadi
 )
 
 model = genai.GenerativeModel(
@@ -1436,20 +1442,20 @@ def adaptive_binarize(img: Image.Image) -> Image.Image:
     except Exception:
         return img
 
-def optimal_resize(img: Image.Image, target_size: int = 1400) -> Image.Image:
-    """Optimal o'lchamga keltirish - AI uchun eng yaxshi va TEZKOR"""
+def optimal_resize(img: Image.Image, target_size: int = 1800) -> Image.Image:
+    """Optimal o'lchamga keltirish - SIFAT uchun optimallashtirilgan"""
     try:
         w, h = img.size
         max_dim = max(w, h)
         
-        # Agar kichik bo'lsa - kattalashtiramiz (minimal)
-        if max_dim < 800:
-            scale = 1000 / max_dim
+        # Agar kichik bo'lsa - kattalashtiramiz (ko'proq detal uchun)
+        if max_dim < 900:
+            scale = 1200 / max_dim  # 1000→1200: kichik rasmlarni aniqroq ko'rsatadi
             new_w, new_h = int(w * scale), int(h * scale)
             return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
         
-        # Agar katta bo'lsa - ALBATTA kichraytramiz (tezlik uchun muhim!)
-        if max_dim > 1600:
+        # Agar katta bo'lsa - kichraytramiz (lekin sifatni saqlaymiz)
+        if max_dim > 2200:  # 1600→2200: katta rasmlarni kamroq kichraytiramiz
             scale = target_size / max_dim
             new_w, new_h = int(w * scale), int(h * scale)
             return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
@@ -1459,22 +1465,25 @@ def optimal_resize(img: Image.Image, target_size: int = 1400) -> Image.Image:
         return img
 
 def enhance_image_for_ai(img: Image.Image) -> Image.Image:
-    """Rasmni AI tahlili uchun optimallashtirish - TEZKOR versiya"""
+    """Rasmni AI tahlili uchun optimallashtirish - SIFATLI versiya"""
     try:
-        # 1. BIRINCHI: O'lchamni kamaytirish (eng muhim tezlik uchun!)
-        img = optimal_resize(img, target_size=1400)
+        # 1. O'lchamni optimallashtirish (kattaroq = aniqroq)
+        img = optimal_resize(img, target_size=1800)  # 1400→1800: AI ko'proq detal ko'radi
         
-        # 2. Grayscale - tez operatsiya
+        # 2. Grayscale
         img = ImageOps.grayscale(img)
         
-        # 3. Auto-contrast - tez va samarali
-        img = ImageOps.autocontrast(img, cutoff=1)
+        # 3. Auto-contrast - eng samarali birinchi qadam
+        img = ImageOps.autocontrast(img, cutoff=0.5)  # cutoff 1→0.5: kamroq ma'lumot yo'qoladi
         
-        # 4. Kontrast oshirish - matn va fon orasini kuchaytirish
-        img = ImageEnhance.Contrast(img).enhance(1.6)
+        # 4. UnsharpMask - harflar chetlarini JUDA aniq qiladi (OCR uchun eng yaxshi filtr)
+        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
         
-        # 5. Keskinlik - harflar chetlarini aniqlashtirish
-        img = ImageEnhance.Sharpness(img).enhance(1.4)
+        # 5. Kontrast oshirish - matn va fon orasini kuchaytirish
+        img = ImageEnhance.Contrast(img).enhance(1.5)  # 1.6→1.5: tabiiyroq
+        
+        # 6. Keskinlik - yakuniy aniqlashtirish
+        img = ImageEnhance.Sharpness(img).enhance(1.3)  # 1.4→1.3: ortiqcha keskinlik shovqin qo'shadi
         
         return img
     except Exception as e:
@@ -1491,22 +1500,23 @@ def enhance_image_for_ai(img: Image.Image) -> Image.Image:
 # 3.2 SMART CROPPING - Katta rasmlar uchun
 # ==========================================
 def should_split_image(img: Image.Image) -> bool:
-    """Rasm bo'linishi kerakmi?"""
+    """Rasm bo'linishi kerakmi? - FAQAT juda katta rasmlar uchun"""
     w, h = img.size
-    # Agar juda uzun yoki keng bo'lsa
-    return h > 3000 or w > 3000 or (h > 2000 and w > 2000)
+    # Chegarani oshirdik: oddiy rasmlarni BO'LMAYMIZ (qatorlar aralashmasligi uchun)
+    # Faqat juda katta rasmlarni bo'lamiz (5000+ piksel)
+    return h > 5000 or w > 5000
 
 def split_image_smart(img: Image.Image) -> list:
-    """Rasmni aqlli bo'laklarga bo'lish"""
+    """Rasmni aqlli bo'laklarga bo'lish - OVERLAP KAMAYTIRILDI"""
     try:
         w, h = img.size
         crops = []
         
         # Vertikal bo'lish (asosan)
         if h > w * 1.5:  # Vertikal rasm
-            # 2 qismga bo'lish (10% overlap)
+            # 2 qismga bo'lish (FAQAT 3% overlap - qatorlar takrorlanmasligi uchun)
             mid = h // 2
-            overlap = int(h * 0.1)
+            overlap = int(h * 0.03)  # 10%→3%: minimal xavfsizlik chegarasi
             
             crop1 = img.crop((0, 0, w, mid + overlap))
             crop2 = img.crop((0, mid - overlap, w, h))
@@ -1515,24 +1525,20 @@ def split_image_smart(img: Image.Image) -> list:
         # Gorizontal bo'lish
         elif w > h * 1.5:  # Gorizontal rasm
             mid = w // 2
-            overlap = int(w * 0.1)
+            overlap = int(w * 0.03)  # 10%→3%
             
             crop1 = img.crop((0, 0, mid + overlap, h))
             crop2 = img.crop((mid - overlap, 0, w, h))
             crops = [crop1, crop2]
         
-        # Kvadrat - 4 qismga
+        # Kvadrat - 4 qismga bo'lmaslik, FAQAT 2 qismga (aniqroq)
         else:
-            mid_w, mid_h = w // 2, h // 2
-            overlap_w = int(w * 0.05)
-            overlap_h = int(h * 0.05)
+            mid_h = h // 2
+            overlap = int(h * 0.03)
             
-            crops = [
-                img.crop((0, 0, mid_w + overlap_w, mid_h + overlap_h)),  # Top-left
-                img.crop((mid_w - overlap_w, 0, w, mid_h + overlap_h)),  # Top-right
-                img.crop((0, mid_h - overlap_h, mid_w + overlap_w, h)),  # Bottom-left
-                img.crop((mid_w - overlap_w, mid_h - overlap_h, w, h))   # Bottom-right
-            ]
+            crop1 = img.crop((0, 0, w, mid_h + overlap))
+            crop2 = img.crop((0, mid_h - overlap, w, h))
+            crops = [crop1, crop2]  # 4→2: kamroq bo'lak = kamroq xato
         
         return crops if crops else [img]
     except Exception:
@@ -1830,11 +1836,12 @@ def analyze_with_retry(model, prompt: str, img: Image.Image, max_retries: int = 
     return (result, quality, passes)
 
 def img_to_png_payload(img: Image.Image):
-    """Rasmni yuqori sifatli PNG formatga o'tkazish"""
+    """Rasmni yuqori sifatli PNG formatga o'tkazish - SIFAT USTUNLIGI"""
     buffered = io.BytesIO()
-    # Optimize=True - fayl hajmini kamaytiradi, sifatni saqlab qoladi
-    # compress_level=6 - muvozanat (0=tez, 9=kichik hajm)
-    img.save(buffered, format="PNG", optimize=True, compress_level=6)
+    # compress_level=3: sifat ustunligi (6 da mayda harflar yo'qolishi mumkin)
+    # PNG lossless format, lekin compress_level rasm ma'lumotiga ta'sir qilmaydi,
+    # faqat fayl hajmi va tezlikka ta'sir qiladi - shuning uchun xavfsiz o'zgarish
+    img.save(buffered, format="PNG", optimize=False, compress_level=3)
     return {"mime_type": "image/png", "data": base64.b64encode(buffered.getvalue()).decode("utf-8")}
 
 
@@ -2145,35 +2152,53 @@ if file:
     if st.session_state.get("last_fn") != file.name:
         with st.spinner("📂 Fayl tayyorlanmoqda..."):
             data = file.getvalue()
-            imgs = []
-            if file.type == "application/pdf":
+            st.session_state.file_data = data  # Fayl ma'lumotlarini saqlash
+            st.session_state.is_pdf = (file.type == "application/pdf")
+            
+            if st.session_state.is_pdf:
                 pdf = pdfium.PdfDocument(data)
-                for i in range(min(len(pdf), 15)):
-                    imgs.append(render_page(data, i, 3.5, True))
+                st.session_state.total_pages = min(len(pdf), 15)
                 pdf.close()
+                # LAZY LOAD: faqat sahifa soni hisoblanadi, rasmlar keyinroq yuklanadi
+                st.session_state.imgs = [None] * st.session_state.total_pages
             else:
-                imgs.append(render_page(data, 0, 1.0, False))
+                st.session_state.total_pages = 1
+                st.session_state.imgs = [render_page(data, 0, 1.0, False)]
 
-            st.session_state.imgs = imgs
             st.session_state.last_fn = file.name
             st.session_state.results, st.session_state.chats = {}, {}
             gc.collect()
-            st.toast("✅ Fayl yuklandi!", icon="📁")
+            st.toast(f"✅ Fayl yuklandi! ({st.session_state.total_pages} sahifa)", icon="📁")
 
-    processed = []
-    for im in st.session_state.imgs:
-        p = im.rotate(rot, expand=True)
-        p = ImageEnhance.Brightness(p).enhance(br)
-        p = ImageEnhance.Contrast(p).enhance(ct)
-        processed.append(p)
+    # LAZY LOAD: dastlab bo'sh list, faqat tanlangan sahifalar yuklanadi
+    processed = [None] * st.session_state.total_pages
+    
+    # Allaqachon yuklangan sahifalarni qayta ishlash (rotate/brightness/contrast)
+    for page_i, im in enumerate(st.session_state.imgs):
+        if im is not None:
+            p = im.rotate(rot, expand=True)
+            p = ImageEnhance.Brightness(p).enhance(br)
+            p = ImageEnhance.Contrast(p).enhance(ct)
+            processed[page_i] = p
 
     st.markdown("<h3 style='margin-top:30px;'>📑 Varaqlarni Tanlang</h3>", unsafe_allow_html=True)
     indices = st.multiselect(
         "Tahlil qilish uchun varaqlarni belgilang:",
-        range(len(processed)),
+        range(st.session_state.total_pages),
         default=[0],
         format_func=lambda x: f"📄 Varaq {x+1}"
     )
+
+    # LAZY LOAD: faqat tanlangan sahifalarni yuklash
+    for idx in indices:
+        if idx < len(processed) and processed[idx] is None and st.session_state.is_pdf:
+            with st.spinner(f"📄 Varaq {idx+1} yuklanmoqda..."):
+                im = render_page(st.session_state.file_data, idx, 4.0, True)
+                st.session_state.imgs[idx] = im
+                p = im.rotate(rot, expand=True)
+                p = ImageEnhance.Brightness(p).enhance(br)
+                p = ImageEnhance.Contrast(p).enhance(ct)
+                processed[idx] = p
 
     if not st.session_state.results and indices:
         st.markdown("<h3 style='margin-top:30px;'>🖼 Tanlangan Varaqlar</h3>", unsafe_allow_html=True)
@@ -2317,7 +2342,9 @@ if file:
                             
                             for j, crop in enumerate(crops):
                                 status.update(label=f"🔍 Varaq {idx+1} - Qism {j+1}/{len(crops)}...")
-                                result, quality, attempts = analyze_with_retry(model, prompt, crop, max_retries=1)
+                                # Har bir qismga ANIQ ko'rsatma berish
+                                crop_prompt = prompt + f"\n\n⚠️ DIQQAT: Bu rasmning {j+1}-QISMI ({len(crops)} qismdan). Faqat SHU rasmdagi matnni o'qi. Oldingi/keyingi qismlar alohida tahlil qilinadi."
+                                result, quality, attempts = analyze_with_retry(model, crop_prompt, crop, max_retries=1)
                                 total_attempts += attempts
                                 
                                 if result:
