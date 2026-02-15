@@ -345,6 +345,11 @@ st.markdown(f"""
         50% {{ background-position: -200% 0; }}
     }}
     
+    @keyframes float {{
+        0%, 100% {{ transform: translateY(0); }}
+        50% {{ transform: translateY(-8px); }}
+    }}
+    
     .result-box:hover {{
         border-color: rgba(197,160,89,0.4) !important;
         box-shadow: var(--shadow-xl), var(--shadow-glow) !important;
@@ -1908,68 +1913,75 @@ def post_process_result(result_text: str) -> str:
     return text
 
 
-def dual_pass_analyze(model, prompt: str, img: Image.Image) -> tuple:
-    """Dual-Pass Tahlil - 2 xil usulda tahlil qilib, eng yaxshisini tanlash"""
-    results = []
-    
-    # === PASS 1: Standart preprocessing ===
-    try:
-        processed_img1 = enhance_image_for_ai(img)
-        payload1 = img_to_png_payload(processed_img1)
-        resp1 = model.generate_content([prompt, payload1])
-        
-        if resp1.candidates and resp1.candidates[0].content.parts:
-            result1 = resp1.text
-            quality1 = assess_quality(result1)
-            results.append({
-                'text': result1,
-                'quality': quality1,
-                'method': 'standard'
-            })
-    except Exception as e:
-        pass  # Xato bo'lsa keyingi usulga o'tamiz
-    
-    # === PASS 2: Yuqori kontrast preprocessing ===
-    try:
-        processed_img2 = enhance_image_for_ai(img)
-        # Qo'shimcha kontrast va keskinlik
-        processed_img2 = ImageEnhance.Contrast(processed_img2).enhance(1.5)
-        processed_img2 = ImageEnhance.Sharpness(processed_img2).enhance(1.3)
-        
-        payload2 = img_to_png_payload(processed_img2)
-        resp2 = model.generate_content([prompt, payload2])
-        
-        if resp2.candidates and resp2.candidates[0].content.parts:
-            result2 = resp2.text
-            quality2 = assess_quality(result2)
-            results.append({
-                'text': result2,
-                'quality': quality2,
-                'method': 'high_contrast'
-            })
-    except Exception as e:
-        pass
-    
-    # === ENG YAXSHI NATIJANI TANLASH ===
-    if not results:
-        return (None, {"score": 0, "reason": "Hech qanday natija olinmadi", "retry": False}, 0)
-    
-    # Eng yuqori sifatli natijani tanlash
-    best = max(results, key=lambda x: x['quality']['score'])
-    
-    # Post-processing qo'llash
-    final_text = post_process_result(best['text'])
-    
-    # Agar ikkala natija ham yaxshi bo'lsa, uzunroq natijani olish
-    if len(results) == 2:
-        score_diff = abs(results[0]['quality']['score'] - results[1]['quality']['score'])
-        if score_diff < 10:  # Skorlar yaqin bo'lsa
-            # Uzunroq javobni olish (ko'proq ma'lumot)
-            longer = max(results, key=lambda x: len(x['text']))
-            final_text = post_process_result(longer['text'])
-            best = longer
-    
-    return (final_text, best['quality'], len(results))
+# ==========================================
+# DUAL-PASS ANALYZE (ARCHIVED - NO LONGER USED)
+# ==========================================
+# Oldingi versiyada 2-3 marta API chaqirilardi.
+# Hozir single-pass + conditional retry ishlatiladi (kamroq API chaqiruvi).
+# Bu funksiya faqat arxiv uchun saqlanmoqda.
+
+# def dual_pass_analyze(model, prompt: str, img: Image.Image) -> tuple:
+#     """Dual-Pass Tahlil - 2 xil usulda tahlil qilib, eng yaxshisini tanlash"""
+#     results = []
+#     
+#     # === PASS 1: Standart preprocessing ===
+#     try:
+#         processed_img1 = enhance_image_for_ai(img)
+#         payload1 = img_to_png_payload(processed_img1)
+#         resp1 = model.generate_content([prompt, payload1])
+#         
+#         if resp1.candidates and resp1.candidates[0].content.parts:
+#             result1 = resp1.text
+#             quality1 = assess_quality(result1)
+#             results.append({
+#                 'text': result1,
+#                 'quality': quality1,
+#                 'method': 'standard'
+#             })
+#     except Exception as e:
+#         pass  # Xato bo'lsa keyingi usulga o'tamiz
+#     
+#     # === PASS 2: Yuqori kontrast preprocessing ===
+#     try:
+#         processed_img2 = enhance_image_for_ai(img)
+#         # Qo'shimcha kontrast va keskinlik
+#         processed_img2 = ImageEnhance.Contrast(processed_img2).enhance(1.5)
+#         processed_img2 = ImageEnhance.Sharpness(processed_img2).enhance(1.3)
+#         
+#         payload2 = img_to_png_payload(processed_img2)
+#         resp2 = model.generate_content([prompt, payload2])
+#         
+#         if resp2.candidates and resp2.candidates[0].content.parts:
+#             result2 = resp2.text
+#             quality2 = assess_quality(result2)
+#             results.append({
+#                 'text': result2,
+#                 'quality': quality2,
+#                 'method': 'high_contrast'
+#             })
+#     except Exception as e:
+#         pass
+#     
+#     # === ENG YAXSHI NATIJANI TANLASH ===
+#     if not results:
+#         return (None, {"score": 0, "reason": "Hech qanday natija olinmadi", "retry": False}, 0)
+#     
+#     # Eng yuqori sifatli natijani tanlash
+#     best = max(results, key=lambda x: x['quality']['score'])
+#     
+#     # Post-processing qo'llash
+#     final_text = post_process_result(best['text'])
+#     
+#     # Agar ikkala natija ham yaxshi bo'lsa, uzunroq natijani olish
+#     if len(results) == 2:
+#         score_diff = abs(results[0]['quality']['score'] - results[1]['quality']['score'])
+#         if score_diff < 10:  # Skorlar yaqin bo'lsa
+#             # Uzunroq javobni olish (ko'proq ma'lumot)
+#             longer = max(results, key=lambda x: len(x['text']))
+#             final_text = post_process_result(longer['text'])
+#             best = longer
+#     
+#     return (final_text, best['quality'], len(results))
 
 def fetch_live_credits(email: str):
     try:
@@ -2012,34 +2024,103 @@ DEMO_COUNTRIES = 4
 # LANDING PAGE FUNCTION (UI ONLY)
 # ==========================================
 def render_landing_page():
-    """Render professional landing page for Hult Prize judges"""
+    """Render professional landing page"""
     
     # Hero Section
     st.markdown(f"""
-        <div style='text-align:center; padding:60px 20px; background:{card_bg}; 
-                    border-radius:20px; box-shadow:0 10px 40px rgba(0,0,0,0.15); margin-bottom:40px;'>
-            <h1 style='font-size:clamp(2.5rem, 6vw, 4rem); margin-bottom:20px; border:none; color:{theme['primary']};'>
-                🏛 Manuscript AI
+        <div style='text-align:center; padding:70px 30px 50px; 
+                    background: linear-gradient(145deg, rgba(12,20,33,0.98) 0%, rgba(22,32,44,0.99) 100%);
+                    border-radius:24px; 
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 80px rgba(197,160,89,0.06);
+                    border: 1px solid rgba(197,160,89,0.15);
+                    margin-bottom:40px;
+                    position: relative;
+                    overflow: hidden;'>
+            <div style='position:absolute; top:0; left:0; right:0; height:3px;
+                        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']});
+                        background-size: 200% 100%;
+                        animation: shimmer 3s ease-in-out infinite;'></div>
+            <div style='font-size:64px; margin-bottom:20px; animation: float 3s ease-in-out infinite;'>🏛️</div>
+            <h1 style='font-size:clamp(2.5rem, 6vw, 3.8rem); margin-bottom:16px; border:none;
+                       background: linear-gradient(135deg, {theme['accent']}, {theme['accent2']});
+                       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                       background-clip: text; font-family: Playfair Display, serif;'>
+                Manuscript AI
             </h1>
-            <p style='font-size:clamp(1.2rem, 3vw, 1.8rem); color:{text_secondary}; margin-bottom:30px; line-height:1.6;'>
+            <p style='font-size:clamp(1.1rem, 2.5vw, 1.4rem); color: rgba(253,250,241,0.6);
+                      margin-bottom:40px; line-height:1.7; max-width:600px; margin-left:auto; margin-right:auto;'>
                 Qadimiy qo'lyozmalarni raqamli tahlil qilish va transliteratsiya qilish uchun<br>
                 sun'iy intellekt asosidagi platforma
             </p>
+            <div style='display:flex; justify-content:center; gap:30px; flex-wrap:wrap; margin-bottom:10px;'>
+                <div style='text-align:center;'>
+                    <div style='font-size:2rem; font-weight:700; color:{theme['accent']};
+                                font-family: Playfair Display, serif;'>{DEMO_MANUSCRIPTS_ANALYZED}+</div>
+                    <div style='font-size:0.8rem; color:rgba(253,250,241,0.45); text-transform:uppercase;
+                                letter-spacing:0.1em; margin-top:4px;'>Tahlil qilingan</div>
+                </div>
+                <div style='width:1px; background:rgba(197,160,89,0.2); align-self:stretch;'></div>
+                <div style='text-align:center;'>
+                    <div style='font-size:2rem; font-weight:700; color:{theme['accent']};
+                                font-family: Playfair Display, serif;'>{DEMO_ACCURACY_RATE}%</div>
+                    <div style='font-size:0.8rem; color:rgba(253,250,241,0.45); text-transform:uppercase;
+                                letter-spacing:0.1em; margin-top:4px;'>Aniqlik</div>
+                </div>
+                <div style='width:1px; background:rgba(197,160,89,0.2); align-self:stretch;'></div>
+                <div style='text-align:center;'>
+                    <div style='font-size:2rem; font-weight:700; color:{theme['accent']};
+                                font-family: Playfair Display, serif;'>{DEMO_LANGUAGES_SUPPORTED}</div>
+                    <div style='font-size:0.8rem; color:rgba(253,250,241,0.45); text-transform:uppercase;
+                                letter-spacing:0.1em; margin-top:4px;'>Tillar</div>
+                </div>
+            </div>
         </div>
     """, unsafe_allow_html=True)
     
-    # CTA Button - Single action
+    # Feature cards
+    f1, f2, f3 = st.columns(3)
+    feat_css = f"""background: linear-gradient(145deg, rgba(30,42,56,0.7) 0%, rgba(22,32,44,0.9) 100%);
+                   border: 1px solid rgba(197,160,89,0.15); border-radius:16px; padding:28px 22px;
+                   text-align:center; box-shadow: 0 8px 32px rgba(0,0,0,0.15); min-height:180px;"""
+    with f1:
+        st.markdown(f"""<div style='{feat_css}'>
+            <div style='font-size:36px; margin-bottom:12px;'>🔍</div>
+            <h4 style='color:{theme['accent']}; margin:0 0 8px 0; font-size:1.1rem; border:none; padding:0;'>AI Tahlil</h4>
+            <p style='color:rgba(253,250,241,0.5); font-size:0.85rem; margin:0; line-height:1.5;'>
+                Gemini Vision orqali qo'lyozmalarni avtomatik tahlil qilish
+            </p>
+        </div>""", unsafe_allow_html=True)
+    with f2:
+        st.markdown(f"""<div style='{feat_css}'>
+            <div style='font-size:36px; margin-bottom:12px;'>🔤</div>
+            <h4 style='color:{theme['accent']}; margin:0 0 8px 0; font-size:1.1rem; border:none; padding:0;'>Transliteratsiya</h4>
+            <p style='color:rgba(253,250,241,0.5); font-size:0.85rem; margin:0; line-height:1.5;'>
+                Arab-Fors yozuvidan lotin alifbosiga qator-qator o'tkazish
+            </p>
+        </div>""", unsafe_allow_html=True)
+    with f3:
+        st.markdown(f"""<div style='{feat_css}'>
+            <div style='font-size:36px; margin-bottom:12px;'>📚</div>
+            <h4 style='color:{theme['accent']}; margin:0 0 8px 0; font-size:1.1rem; border:none; padding:0;'>Akademik Tahlil</h4>
+            <p style='color:rgba(253,250,241,0.5); font-size:0.85rem; margin:0; line-height:1.5;'>
+                Leksik-semantik tahlil va akademik izohlar
+            </p>
+        </div>""", unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # CTA Button
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("▶ BOSHLASH", key="start_btn", use_container_width=True):
+        if st.button("🚀 BOSHLASH", key="start_btn", use_container_width=True):
             st.session_state.show_landing = False
             st.rerun()
     
-    st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown(f"""
-        <div style='text-align:center; margin-top:60px; padding:30px; background:{bg_secondary}; border-radius:10px;'>
-            <p style='color:{text_secondary}; font-size:0.9rem; margin:0;'>
-                 Tadqiqot: d87809889-dot | 📧 Aloqa uchun: {st.session_state.u_email}
+        <div style='text-align:center; margin-top:50px; padding:20px;
+                    border-top: 1px solid rgba(197,160,89,0.1);'>
+            <p style='color:rgba(253,250,241,0.3); font-size:0.8rem; margin:0;'>
+                Tadqiqot: d87809889-dot · 📧 {st.session_state.u_email}
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -2048,17 +2129,56 @@ def render_landing_page():
 # 4. TADQIQOT INTERFEYSI
 # ==========================================
 with st.sidebar:
-    st.markdown(f"<h2 style='color:{theme['accent']}; text-align:center; border:none;'>📜 Manuscript AI</h2>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align:center; color:#fdfaf1; font-size:14px;'>👤 <b>{st.session_state.u_email}</b></p>", unsafe_allow_html=True)
+    # === SIDEBAR HEADER ===
+    st.markdown(f"""
+        <div style='text-align:center; padding:16px 0 12px; margin-bottom:8px;'>
+            <div style='font-size:32px; margin-bottom:6px;'>🏛️</div>
+            <div style='font-family: Playfair Display, serif; font-size:1.4rem; font-weight:700;
+                        background: linear-gradient(135deg, {theme['accent']}, {theme['accent2']});
+                        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+                        background-clip: text;'>Manuscript AI</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # User info compact
+    st.markdown(f"""
+        <div style='background: rgba(197,160,89,0.08); border-radius:10px; padding:10px 14px;
+                    border: 1px solid rgba(197,160,89,0.12); margin-bottom:12px;
+                    display:flex; align-items:center; gap:10px;'>
+            <div style='width:32px; height:32px; border-radius:50%;
+                        background: linear-gradient(135deg, {theme['accent']}, {theme['accent2']});
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:14px; color:{theme['primary']}; font-weight:700;'>
+                {st.session_state.u_email[0].upper()}
+            </div>
+            <div style='overflow:hidden;'>
+                <div style='color:#fdfaf1; font-size:12px; font-weight:600;
+                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                            max-width:160px;'>{st.session_state.u_email}</div>
+                <div style='color:rgba(253,250,241,0.4); font-size:10px;'>Tadqiqotchi</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
     current_credits = fetch_live_credits(st.session_state.u_email)
     
-    # Enhanced credit display with progress bar
-    st.metric("💳 Mavjud Kredit", f"{current_credits} sahifa")
+    # Credit display compact
     credit_percent = min((current_credits / 100) * 100, 100) if current_credits <= 100 else 100
+    credit_color = "#10b981" if credit_percent > 50 else ("#f59e0b" if credit_percent > 20 else "#ef4444")
     st.markdown(f"""
-        <div class='credit-bar-container'>
-            <div class='credit-bar' style='width:{credit_percent}%'></div>
+        <div style='background: rgba(0,0,0,0.2); border-radius:12px; padding:14px 16px;
+                    border: 1px solid rgba(197,160,89,0.1); margin-bottom:4px;'>
+            <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
+                <span style='color:rgba(253,250,241,0.5); font-size:11px; text-transform:uppercase;
+                             letter-spacing:0.08em;'>💳 Kredit</span>
+                <span style='color:{theme['accent']}; font-size:1.3rem; font-weight:700;
+                             font-family: Playfair Display, serif;'>{current_credits}</span>
+            </div>
+            <div style='background:rgba(0,0,0,0.3); border-radius:6px; padding:2px; overflow:hidden;'>
+                <div style='height:6px; width:{credit_percent}%; border-radius:4px;
+                            background: linear-gradient(90deg, {credit_color}, {theme['accent']});
+                            transition: width 0.6s ease; box-shadow: 0 0 8px {credit_color}40;'></div>
+            </div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -2125,7 +2245,19 @@ with st.sidebar:
     
     st.divider()
     
-    if st.button("🚪 TIZIMDAN CHIQISH"):
+    # Premium logout button
+    st.markdown(f"""
+        <div style='background: linear-gradient(135deg, rgba(239,68,68,0.1) 0%, rgba(220,38,38,0.15) 100%);
+                    border: 1px solid rgba(239,68,68,0.2); border-radius:12px;
+                    padding:14px 16px; text-align:center; margin-top:8px;
+                    transition: all 0.3s ease; cursor: pointer;'
+             onmouseover='this.style.background=\"linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.2) 100%)\"; this.style.borderColor=\"rgba(239,68,68,0.3)\";'
+             onmouseout='this.style.background=\"linear-gradient(135deg, rgba(239,68,68,0.1) 0%, rgba(220,38,38,0.15) 100%)\"; this.style.borderColor=\"rgba(239,68,68,0.2)\";'>
+            <span style='color:#fca5a5; font-size:12px; font-weight:600; letter-spacing:0.03em;'>🚪 TIZIMDAN CHIQISH</span>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("CHIQISH", key="logout_btn", use_container_width=True):
         st.session_state.auth = False
         st.toast("👋 Xayr!", icon="👋")
         st.rerun()
@@ -2136,21 +2268,50 @@ if st.session_state.show_landing:
     st.stop()
 
 # === MAIN CONTENT AREA ===
-st.markdown("<h1>📜 Raqamli Qo'lyozmalar Ekspertizasi</h1>", unsafe_allow_html=True)
-st.markdown(f"<p style='text-align:center; color:{text_secondary}; font-size:18px; margin-bottom:30px;'>Sun'iy intellekt yordamida qadimiy matnlarni tahlil qiling va transliteratsiya qiling</p>", unsafe_allow_html=True)
+st.markdown(f"""
+    <div style='text-align:center; margin-bottom:36px;'>
+        <h1 style='margin-bottom:8px; font-size:clamp(1.8rem, 4vw, 2.6rem);'>📜 Raqamli Qo'lyozmalar Ekspertizasi</h1>
+        <p style='color:{text_secondary}; font-size:clamp(0.9rem, 2vw, 1.1rem); margin:0; line-height:1.6;'>
+            Sun'iy intellekt yordamida qadimiy matnlarni tahlil qiling
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
 file = st.file_uploader("📤 Qo'lyozma faylini yuklang", type=["pdf", "png", "jpg", "jpeg"], label_visibility="visible")
 
 if not file:
-    # === EMPTY STATE ===
+    # === PREMIUM EMPTY STATE ===
     st.markdown(f"""
-        <div class='empty-state'>
-            <h3 style='font-size:3rem; margin-bottom:20px;'>📜</h3>
-            <h3>Qo'lyozma yuklang</h3>
-            <p style='color:{text_secondary}; font-size:16px; line-height:1.6;'>
-                PDF, PNG, JPG yoki JPEG formatidagi fayllarni yuklashingiz mumkin<br>
-                Maksimal 15 sahifagacha tahlil qilish imkoniyati
+        <div style='text-align:center; padding:80px 30px;
+                    background: linear-gradient(145deg, rgba(30,42,56,0.5) 0%, rgba(22,32,44,0.7) 100%);
+                    border-radius:24px; border: 2px dashed rgba(197,160,89,0.25);
+                    margin: 40px 0; position: relative; overflow: hidden;'>
+            <div style='position:absolute; top:0; left:0; right:0; bottom:0;
+                        background: radial-gradient(circle at 50% 50%, rgba(197,160,89,0.04) 0%, transparent 70%);
+                        pointer-events:none;'></div>
+            <div style='font-size:4rem; margin-bottom:20px; animation: float 3s ease-in-out infinite;
+                        position:relative; z-index:1;'>📜</div>
+            <h3 style='color:{theme['accent']}; font-size:1.5rem; margin-bottom:12px; border:none;
+                       padding:0; position:relative; z-index:1;'>Qo'lyozma yuklang</h3>
+            <p style='color:rgba(253,250,241,0.5); font-size:15px; line-height:1.7;
+                      max-width:400px; margin:0 auto 24px; position:relative; z-index:1;'>
+                PDF, PNG, JPG yoki JPEG formatidagi fayllarni<br>yuklashingiz mumkin
             </p>
+            <div style='display:flex; justify-content:center; gap:12px; flex-wrap:wrap;
+                        position:relative; z-index:1;'>
+                <span style='background:rgba(197,160,89,0.1); color:{theme['accent']}; padding:6px 14px;
+                             border-radius:8px; font-size:0.75rem; font-weight:600;
+                             border: 1px solid rgba(197,160,89,0.15);'>PDF</span>
+                <span style='background:rgba(197,160,89,0.1); color:{theme['accent']}; padding:6px 14px;
+                             border-radius:8px; font-size:0.75rem; font-weight:600;
+                             border: 1px solid rgba(197,160,89,0.15);'>PNG</span>
+                <span style='background:rgba(197,160,89,0.1); color:{theme['accent']}; padding:6px 14px;
+                             border-radius:8px; font-size:0.75rem; font-weight:600;
+                             border: 1px solid rgba(197,160,89,0.15);'>JPG</span>
+                <span style='background:rgba(197,160,89,0.1); color:{theme['accent']}; padding:6px 14px;
+                             border-radius:8px; font-size:0.75rem; font-weight:600;
+                             border: 1px solid rgba(197,160,89,0.15);'>≤ 15 sahifa</span>
+            </div>
         </div>
     """, unsafe_allow_html=True)
     st.stop()
@@ -2341,7 +2502,16 @@ Yuqoridagi AYNI raqamlar bilan lotin alifbosida yoz (raqamlar MOS kelishi SHART)
 
 💡 ESLATMA: Sifatli javob = Ko'proq ma'lumot + Kam [?] belgilar + To'liq jadval + Aniq foizlar"""
             
-            # === PROGRESS TRACKER ===
+            # === PREMIUM PROGRESS TRACKER ===
+            st.markdown(f"""
+                <div style='background: rgba(30,42,56,0.6); border-radius:14px; padding:20px 24px;
+                            border: 1px solid rgba(197,160,89,0.12); margin:24px 0;'>
+                    <div style='display:flex; align-items:center; gap:10px; margin-bottom:10px;'>
+                        <span style='font-size:20px;'>🔍</span>
+                        <span style='color:{theme['accent']}; font-weight:600; font-size:15px;'>Tahlil jarayoni</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
             progress_bar = st.progress(0, text="🔍 Tahlil boshlanmoqda...")
             total_attempts = 0
             quality_issues = []
@@ -2413,8 +2583,9 @@ Yuqoridagi AYNI raqamlar bilan lotin alifbosida yoz (raqamlar MOS kelishi SHART)
                     except Exception as e:
                         st.error(f"❌ Xatolik yuz berdi: {e}")
                 
-                # Update progress
-                progress_bar.progress((i+1)/len(indices), text=f"📊 {i+1}/{len(indices)} varaq tahlil qilindi")
+                # Update progress with custom styling
+                progress_percent = (i+1)/len(indices)
+                progress_bar.progress(progress_percent, text=f"📊 {i+1}/{len(indices)} varaq tahlil qilindi ({int(progress_percent*100)}%)")
             
             # === QUALITY SUMMARY ===
             if quality_issues:
@@ -2449,50 +2620,55 @@ Yuqoridagi AYNI raqamlar bilan lotin alifbosida yoz (raqamlar MOS kelishi SHART)
         st.divider()
         
         # === PROFESSIONAL HEADER ===
+        result_count = len(st.session_state.results)
         st.markdown(f"""
-        <div style='background: linear-gradient(135deg, rgba(30,42,56,0.95) 0%, rgba(22,32,44,0.98) 100%); 
-                    border: 1px solid rgba(197,160,89,0.3); 
-                    border-radius: 16px; 
-                    padding: 24px 30px; 
-                    margin-bottom: 24px;
-                    box-shadow: 0 8px 32px rgba(0,0,0,0.2);'>
-            <div style='display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;'>
+        <div style='background: linear-gradient(145deg, rgba(12,20,33,0.98) 0%, rgba(22,32,44,0.99) 100%);
+                    border: 1px solid rgba(197,160,89,0.2);
+                    border-radius: 20px;
+                    padding: 28px 32px;
+                    margin-bottom: 28px;
+                    box-shadow: 0 12px 40px rgba(0,0,0,0.25), 0 0 40px rgba(197,160,89,0.04);
+                    position: relative; overflow: hidden;
+                    animation: fadeInUp 0.6s cubic-bezier(0.23, 1, 0.32, 1);'>
+            <div style='position:absolute; top:0; left:0; right:0; height:2px;
+                        background: linear-gradient(90deg, {theme['accent']}, {theme['accent2']}, {theme['accent']});
+                        background-size: 200% 100%; animation: shimmer 3s ease-in-out infinite;'></div>
+            <div style='display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;'>
                 <div>
-                    <h2 style='margin: 0; color: {theme["accent"]}; font-family: Playfair Display, serif;'>
+                    <h2 style='margin:0; padding:0; border:none; color:{theme['accent']};
+                               font-family:Playfair Display,serif; font-size:1.5rem; text-align:left;'>
                         📊 Akademik Ekspertiza Natijasi
                     </h2>
-                    <p style='margin: 8px 0 0 0; color: rgba(253,250,241,0.7); font-size: 14px;'>
-                        🎓 Paleografik tahlil • 🔤 Ilmiy transliteratsiya • 📖 Akademik tarjima
+                    <p style='margin:6px 0 0; color:rgba(253,250,241,0.45); font-size:13px;'>
+                        {result_count} varaq tahlil qilindi · {file.name}
                     </p>
                 </div>
-                <div style='display: flex; gap: 8px; flex-wrap: wrap;'>
-                    <span style='background: linear-gradient(135deg, {theme["accent"]} 0%, {theme["accent2"]} 100%); 
-                                 color: {theme["primary"]}; 
-                                 padding: 6px 14px; 
-                                 border-radius: 20px; 
-                                 font-size: 12px; 
-                                 font-weight: 600;'>
-                        ✅ TEKSHIRILGAN
-                    </span>
-                    <span style='background: rgba(16,185,129,0.2); 
-                                 color: #10b981; 
-                                 padding: 6px 14px; 
-                                 border-radius: 20px; 
-                                 font-size: 12px; 
-                                 font-weight: 600;
-                                 border: 1px solid rgba(16,185,129,0.3);'>
-                        🔬 AKADEMIK STANDART
-                    </span>
+                <div style='display:flex; gap:8px; flex-wrap:wrap;'>
+                    <span style='background: linear-gradient(135deg, {theme['accent']}, {theme['accent2']});
+                                 color:{theme['primary']}; padding:5px 14px; border-radius:20px;
+                                 font-size:11px; font-weight:700; letter-spacing:0.03em;'>✅ TEKSHIRILGAN</span>
+                    <span style='background:rgba(16,185,129,0.12); color:#10b981;
+                                 padding:5px 14px; border-radius:20px; font-size:11px; font-weight:600;
+                                 border:1px solid rgba(16,185,129,0.2);'>🔬 AKADEMIK</span>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
         # === EXPORT FORMAT SELECTOR ===
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.markdown(f"<p style='font-size:16px; color:{text_secondary};'>Natijalarni yuklab oling:</p>", unsafe_allow_html=True)
-        with col2:
+        st.markdown(f"""
+            <div style='background: rgba(30,42,56,0.6); border-radius:14px; padding:20px 24px;
+                        border: 1px solid rgba(197,160,89,0.12); margin-bottom:24px;
+                        display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;'>
+                <div style='display:flex; align-items:center; gap:8px;'>
+                    <span style='font-size:20px;'>📥</span>
+                    <span style='color:rgba(253,250,241,0.6); font-size:14px;'>Natijalarni yuklab oling</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        exp_c1, exp_c2 = st.columns([3, 1])
+        with exp_c2:
             export_format = st.selectbox("📥 Format", ["DOCX", "TXT", "JSON"], label_visibility="collapsed")
         
         final_text = ""
@@ -2514,7 +2690,16 @@ Yuqoridagi AYNI raqamlar bilan lotin alifbosida yoz (raqamlar MOS kelishi SHART)
                         st.rerun()
 
         for idx in result_indices:
-            st.markdown(f"<h4 style='margin-top:40px;'>📖 Varaq {idx+1} - Tahlil</h4>", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div style='margin-top:40px; display:flex; align-items:center; gap:12px; margin-bottom:16px;'>
+                    <div style='background: linear-gradient(135deg, {theme['accent']}, {theme['accent2']});
+                                width:36px; height:36px; border-radius:10px;
+                                display:flex; align-items:center; justify-content:center;
+                                font-size:16px; font-weight:700; color:{theme['primary']};
+                                box-shadow: 0 4px 12px rgba(197,160,89,0.25);'>{idx+1}</div>
+                    <h4 style='margin:0; padding:0; border:none; text-align:left; font-size:1.2rem;'>📖 Varaq {idx+1} - Tahlil</h4>
+                </div>
+            """, unsafe_allow_html=True)
             c1, c2 = st.columns([1, 1.3])
 
             with c1:
@@ -2548,7 +2733,12 @@ Yuqoridagi AYNI raqamlar bilan lotin alifbosida yoz (raqamlar MOS kelishi SHART)
                 final_text += f"\n\n--- PAGE {idx+1} ---\n{st.session_state.results[idx]}\n\n{cite}"
 
                 # === CHAT INTERFACE ===
-                st.markdown(f"<p style='color:{text_secondary}; font-weight:bold; margin-top:25px; margin-bottom:12px;'>💬 Savollar va Javoblar:</p>", unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div style='margin-top:25px; margin-bottom:12px; display:flex; align-items:center; gap:8px;'>
+                        <span style='font-size:18px;'>💬</span>
+                        <span style='color:{text_secondary}; font-weight:600; font-size:14px;'>Savollar va Javoblar</span>
+                    </div>
+                """, unsafe_allow_html=True)
                 
                 st.session_state.chats.setdefault(idx, [])
                 for ch in st.session_state.chats[idx]:
@@ -2606,6 +2796,7 @@ JAVOB QOIDALARI:
                     bio.getvalue(),
                     "manuscript_ai_report.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
                     on_click=lambda: st.toast("✅ DOCX yuklab olindi!", icon="📥")
                 )
             elif export_format == "TXT":
@@ -2614,6 +2805,7 @@ JAVOB QOIDALARI:
                     final_text,
                     "manuscript_ai_report.txt",
                     mime="text/plain",
+                    use_container_width=True,
                     on_click=lambda: st.toast("✅ TXT yuklab olindi!", icon="📥")
                 )
             elif export_format == "JSON":
@@ -2633,6 +2825,7 @@ JAVOB QOIDALARI:
                     json_data,
                     "manuscript_ai_report.json",
                     mime="application/json",
+                    use_container_width=True,
                     on_click=lambda: st.toast("✅ JSON yuklab olindi!", icon="📥")
                 )
 
